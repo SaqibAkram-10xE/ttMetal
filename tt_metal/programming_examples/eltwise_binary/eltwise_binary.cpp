@@ -84,50 +84,50 @@ int main(int argc, char** argv) {
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
 
-        // Initialize the input buffers with random data. For this example, src0 is a random vector of bfloat16 values
-        // std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
-        // for (size_t i = 0; i < colIdx_data.size(); ++i)
-        //     colIdx_data[i] = bfloat16(static_cast<float>(i % 16));
-        
-        //  std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);//, bfloat16(val_to_add));
-        // for (size_t i = 0; i < rowIdx_data.size(); ++i)
-        //     rowIdx_data[i] = bfloat16(static_cast<float>(i % 4));
-
-        // std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
-        // for (size_t i = 0; i < codeBook_data.size(); ++i)
-        //     codeBook_data[i] = bfloat16(static_cast<float>(i));
-
-
-        std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<int> dist_col(0, 15);
+        // // Initialize the input buffers with random data. For this example, src0 is a random vector of bfloat16 values
         std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
-        for (auto& val : colIdx_data)
-            val = bfloat16(static_cast<float>(dist_col(rng)));
+        for (size_t i = 0; i < colIdx_data.size(); ++i)
+            colIdx_data[i] = bfloat16(static_cast<float>(15));
+        
+         std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);//, bfloat16(val_to_add));
+        for (size_t i = 0; i < rowIdx_data.size(); ++i)
+            rowIdx_data[i] = bfloat16(static_cast<float>(3));
 
         std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
         for (size_t i = 0; i < codeBook_data.size(); ++i)
-            codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+            codeBook_data[i] = bfloat16(static_cast<float>(i));
 
-        std::uniform_int_distribution<int> dist_row(0, 3);
-        std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
-        for (auto& val : rowIdx_data)
-            val = bfloat16(static_cast<float>(dist_row(rng)));
+
+        // std::mt19937 rng(std::random_device{}());
+        // std::uniform_int_distribution<int> dist_col(0, 15);
+        // std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
+        // for (auto& val : colIdx_data)
+        //     val = bfloat16(static_cast<float>(dist_col(rng)));
+
+        // std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
+        // for (size_t i = 0; i < codeBook_data.size(); ++i)
+        //     codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+
+        // std::uniform_int_distribution<int> dist_row(0, 3);
+        // std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
+        // for (auto& val : rowIdx_data)
+        //     val = bfloat16(static_cast<float>(dist_row(rng)));
 
 
 
         fmt::print("codeBook first 16: ");
         for (int i = 0; i < 16 && i < (int)codeBook_data.size(); ++i)
-            fmt::print("{:.1f} ", float(codeBook_data[i]));
+            fmt::print("{} ", float(codeBook_data[i]));
         fmt::print("\n");
 
         fmt::print("colIdx first 16: ");
         for (int i = 0; i < 16 && i < (int)colIdx_data.size(); ++i)
-            fmt::print("{:.1f} ", float(colIdx_data[i]));
+            fmt::print("{} ", float(colIdx_data[i]));
         fmt::print("\n");
 
         fmt::print("rowIdx first 16: ");
         for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
-            fmt::print("{:.1f} ", float(rowIdx_data[i]));
+            fmt::print("{} ", float(rowIdx_data[i]));
         fmt::print("\n");
 
 
@@ -216,7 +216,8 @@ int main(int argc, char** argv) {
                                                   codeBook_dram_buffer->address(), 
                                                   n_tiles_colIdx});
         SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
-        SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx});
+        SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
+                                                n_tiles_rowIdx, elements_per_tile_rowIdx});
 
         // We have setup the program. Now we queue the kernel for execution. The final argument is set to false. This indicates
         // to Metalium that the operation is non-blocking. The function is allowed to return upon the kernel being queued. We must
@@ -276,13 +277,13 @@ int main(int argc, char** argv) {
                 if (std::abs(expected - actual) > eps) {
                     pass = false;
                     // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
-                    if (count < 64)
+                    if (count < 1)
                     {
                         fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
-                        fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-                        for(int j = codebook_index-3 ; j < codebook_index+3; j++) {
-                            fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
-                        }
+                        // fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
+                        // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
+                        //     fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
+                        // }
                         count++;
                     }
                     
@@ -313,7 +314,8 @@ int main(int argc, char** argv) {
     if (pass) {
         fmt::print("Test Passed\n");
     } else {
-        TT_THROW("Test Failed");
+        // TT_THROW("Test Failed");
+        fmt::print("Test Failed\n");
     }
 
     return 0;

@@ -7,7 +7,7 @@
 inline float bfloat16_to_float(uint16_t bf16_val) {
     union {
         uint32_t u32;
-        float f32;a
+        float f32;
     } u;
     u.u32 = static_cast<uint32_t>(bf16_val) << 16;
     return u.f32;
@@ -42,11 +42,11 @@ void kernel_main() {
     constexpr auto codeBook_args = TensorAccessorArgs<rowIdx_args.next_compile_time_args_offset()>();
     const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes);
 
+    uint32_t current_row_tile_id = 0;
 
     cb_reserve_back(cb_codeBook, 1);
     uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
     noc_async_read_tile(0, codeBook, cb_codeBook_addr); 
-
     // const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_codeBook_addr);
     // DPRINT << "tile# " << 1 << ", cb_codeBook_addr from 0 to 64 elements (bf16->f32): ";
     // for (uint32_t i = 0; i < 64; i++) {
@@ -54,15 +54,12 @@ void kernel_main() {
     //     DPRINT << val << " ";
     // }
     // DPRINT << ENDL();
-
     noc_async_read_barrier();
     cb_push_back(cb_codeBook, 1);
 
-
     cb_reserve_back(cb_rowIdx, 1);
     uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-    noc_async_read_tile(0, rowIdx, cb_rowIdx_addr); 
-    
+    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
     // const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_rowIdx_addr);
     // DPRINT << "tile# " << 1 << ", cb_rowIdx_addr from 0 to 64 elements (bf16->f32): ";
     // for (uint32_t i = 0; i < 1024; i++) {
@@ -70,38 +67,34 @@ void kernel_main() {
     //     DPRINT << val << " ";
     // }
     // DPRINT << ENDL();
-
     noc_async_read_barrier();
     cb_push_back(cb_rowIdx, 1);
 
-
-
-
     // Loop over all the tiles and read them into the circular buffers
-    for (uint32_t i = 0; i < n_tiles_colIdx; i++) {
-        // First make sure there is space in the circular buffers to be written to.
+    for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         cb_reserve_back(cb_colIdx, 1);
-        // cb_reserve_back(cb_rowIdx, 1);  // wait until we have 1 free slot. This blocks if the
-                                     // other kernels cannot consume the tiles fast enough.
-                                     // Deciding how large the buffer should be is a tradeoff.
         uint32_t cb_colIdx_addr = get_write_ptr(cb_colIdx);
-        // uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-        noc_async_read_tile(i, colIdx, cb_colIdx_addr);  // read the tile into the circular buffer
-        // noc_async_read_tile(i, rowIdx, cb_rowIdx_addr);  // We can overlap async reads and writes
-                                                   // to reduce the data movement overhead.
-
-        noc_async_read_barrier();  // Wait until tile reads are done
-
-        // const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
-        // DPRINT << "tile# " << i << ", cb_colIdx_addr from 0 to 64 elements (bf16->f32): ";
-        // for (uint32_t i = 0; i < 64; i++) {
-        //     float val = bfloat16_to_float(ptr16[i]);
-        //     DPRINT << val << " ";
-        // }
-        // DPRINT << ENDL();
-
+        noc_async_read_tile(colIdx_tile_id, colIdx, cb_colIdx_addr);
+        noc_async_read_barrier();
+        if (colIdx_tile_id == 1)    
+        {
+            const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
+            DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
+            for (uint32_t i = 0; i < 1024; i++) {
+                float val = bfloat16_to_float(ptr16[i]);
+                DPRINT << val << " ";
+            }
+            DPRINT << ENDL();
+        }
         cb_push_back(cb_colIdx, 1);
-        // cb_push_back(cb_rowIdx, 1);  // mark the tiles as ready. From this point forward kernels
-                                  // calling `cb_wait_front` will see this tile
+
+        if(colIdx_tile_id / 16 != current_row_tile_id) {
+            current_row_tile_id ++;
+            cb_reserve_back(cb_rowIdx, 1);
+            uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
+            noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
+            noc_async_read_barrier();
+            cb_push_back(cb_rowIdx, 1);
+        }
     }
-}
+} // namespace NAMESPACE
