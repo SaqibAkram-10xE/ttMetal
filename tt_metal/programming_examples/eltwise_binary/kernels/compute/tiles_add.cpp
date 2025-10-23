@@ -41,18 +41,36 @@ void MAIN {
     cb_get_tile(cb_codeBook, 0 , &codeBook_tile_ptr_f32);
     codeBook_tile_ptr_f32 = &codeBook_tile_ptr_f32[8];
 
+    // if (colIdx_tile_id <= 3)    
+    // {
+    //     DPRINT << "tile# " << 1 << ", cb_codeBook from 0 to 1024 elements (bf16->f32): ";
+    //     for (uint32_t i = 0; i < 1024; i++) {
+    //         float val = bfloat16_to_float(codeBook_tile_ptr_f32[i]);
+    //         DPRINT << val << " ";
+    //     }
+    //     DPRINT << ENDL();
+    // }
+
     cb_wait_front(cb_rowIdx, 1);
     cb_get_tile(cb_rowIdx, current_row_tile_id , &rowIdx_tile_ptr_f32);
     rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[8]; 
+
+    // DPRINT << "tile# " << 1 << ", cb_rowIdx from 0 to 1024 elements (bf16->f32): ";
+    // for (uint32_t i = 0; i < 1024; i++) {
+    //     float val = bfloat16_to_float(rowIdx_tile_ptr_f32[i]);
+    //     DPRINT << val << " ";
+    // }
+    // DPRINT << ENDL();
+
 
     for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         cb_wait_front(cb_colIdx, 1);
         cb_get_tile(cb_colIdx, colIdx_tile_id , &colIdx_tile_ptr_f32);
         colIdx_tile_ptr_f32 = &colIdx_tile_ptr_f32[8];
-        if (colIdx_tile_id <= 3)    
+        if (colIdx_tile_id <= 1)    
         {
             DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
-            for (uint32_t i = 0; i < 20 + elements_per_tile_colIdx; i++) {
+            for (uint32_t i = 0; i < elements_per_tile_colIdx; i++) {
                 float val = bfloat16_to_float(colIdx_tile_ptr_f32[i]);
                 DPRINT << val << " ";
             }
@@ -61,6 +79,12 @@ void MAIN {
         cb_reserve_back(cb_out0, 1);
         cb_get_tile(cb_out0, colIdx_tile_id , &out_tile_ptr_f32);
         out_tile_ptr_f32 = &out_tile_ptr_f32[8];
+
+        // 1. Use 1 rowIdx for 16 colIdx        (broadcast)
+        // 2. Multiply rowIdx by 16             (bitshift / multiplier)
+        // 3. Add it colIdx to get index        (Addition)
+        // 4. Get codebook value at the index   (----)
+    
 
         for(size_t idx_b = 0; idx_b < elements_per_tile_colIdx; idx_b++) {
             // load row and col bfloat16 values and create codebook index

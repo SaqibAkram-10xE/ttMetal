@@ -46,12 +46,12 @@ int main(int argc, char** argv) {
         // * Processing 64 tiles
         // * Each tile is 32x32 elements
         // * Each element is a bfloat16 (2 bytes)
-        constexpr uint32_t n_tiles_colIdx = 16;   // 16 or 64
+        constexpr uint32_t n_tiles_colIdx = 12;   // 16 or 64
         constexpr uint32_t n_tiles_codebook = 1;
         constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-        constexpr uint32_t elements_per_tile_codebook = 64;
+        constexpr uint32_t elements_per_tile_codebook = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;//64;
 
         constexpr uint32_t tile_size_bytes_colIdx = sizeof(bfloat16) * elements_per_tile_colIdx;
         constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
@@ -77,41 +77,48 @@ int main(int argc, char** argv) {
         distributed::ReplicatedBufferConfig buffer_config{
             .size = n_tiles_colIdx * tile_size_bytes_colIdx // Total bytes per device (replicated across the mesh).
         };
+        distributed::ReplicatedBufferConfig buffer_config_rowIdx{
+            .size = n_tiles_rowIdx * tile_size_bytes_rowIdx // Total bytes per device (replicated across the mesh).
+        };
+        distributed::ReplicatedBufferConfig buffer_config_codebook{
+            .size = n_tiles_codebook * tile_size_bytes_codebook // Total bytes per device (replicated across the mesh).
+        };
+
 
         auto colIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
-        auto codeBook_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_codebook, mesh_device.get());
-        auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_rowIdx, mesh_device.get());
+        auto codeBook_dram_buffer = distributed::MeshBuffer::create(buffer_config_codebook, dram_config_codebook, mesh_device.get());
+        auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config_rowIdx, dram_config_rowIdx, mesh_device.get());
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
 
         // // Initialize the input buffers with random data. For this example, src0 is a random vector of bfloat16 values
-        std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
-        for (size_t i = 0; i < colIdx_data.size(); ++i)
-            colIdx_data[i] = bfloat16(static_cast<float>(15));
-        
-         std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);//, bfloat16(val_to_add));
-        for (size_t i = 0; i < rowIdx_data.size(); ++i)
-            rowIdx_data[i] = bfloat16(static_cast<float>(3));
-
-        std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
-        for (size_t i = 0; i < codeBook_data.size(); ++i)
-            codeBook_data[i] = bfloat16(static_cast<float>(i));
-
-
-        // std::mt19937 rng(std::random_device{}());
-        // std::uniform_int_distribution<int> dist_col(0, 15);
         // std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
-        // for (auto& val : colIdx_data)
-        //     val = bfloat16(static_cast<float>(dist_col(rng)));
+        // for (size_t i = 0; i < colIdx_data.size(); ++i)
+        //     colIdx_data[i] = bfloat16(static_cast<float>(15));
+        
+        //  std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);//, bfloat16(val_to_add));
+        // for (size_t i = 0; i < rowIdx_data.size(); ++i)
+        //     rowIdx_data[i] = bfloat16(static_cast<float>(3));
 
         // std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
         // for (size_t i = 0; i < codeBook_data.size(); ++i)
-        //     codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+        //     codeBook_data[i] = bfloat16(static_cast<float>(6));
 
-        // std::uniform_int_distribution<int> dist_row(0, 3);
-        // std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
-        // for (auto& val : rowIdx_data)
-        //     val = bfloat16(static_cast<float>(dist_row(rng)));
+
+        std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<int> dist_col(0, 15);
+        std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
+        for (auto& val : colIdx_data)
+            val = bfloat16(static_cast<float>(dist_col(rng)));
+
+        std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
+        for (size_t i = 0; i < codeBook_data.size(); ++i)
+            codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+
+        std::uniform_int_distribution<int> dist_row(0, 3);
+        std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
+        for (auto& val : rowIdx_data)
+            val = bfloat16(static_cast<float>(dist_row(rng)));
 
 
 

@@ -29,7 +29,9 @@ void kernel_main() {
     // circular buffers are created with the same tile size as the DRAM
     // buffers (Whis is most of the cases).
     const uint32_t tile_size_bytes = get_tile_size(cb_colIdx);  // typically 2048
-
+    const uint32_t tile_size_bytes_rowIdx = get_tile_size(cb_rowIdx);  // typically 2048
+    const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // typically 2048
+    const uint16_t* ptr16;
     // Create address generators for the input buffers. Consider these the
     // pointers for interleaved buffers
     // Setting the page size to be tile_size_bytes works because we set it up
@@ -38,37 +40,42 @@ void kernel_main() {
     constexpr auto colIdx_args = TensorAccessorArgs<0>();
     const auto colIdx = TensorAccessor(colIdx_args, colIdx_addr, tile_size_bytes);
     constexpr auto rowIdx_args = TensorAccessorArgs<colIdx_args.next_compile_time_args_offset()>();
-    const auto rowIdx = TensorAccessor(rowIdx_args, rowIdx_addr, tile_size_bytes);
+    const auto rowIdx = TensorAccessor(rowIdx_args, rowIdx_addr, tile_size_bytes_rowIdx);
     constexpr auto codeBook_args = TensorAccessorArgs<rowIdx_args.next_compile_time_args_offset()>();
-    const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes);
+    const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes_codebook);
 
     uint32_t current_row_tile_id = 0;
 
     cb_reserve_back(cb_codeBook, 1);
     uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
     noc_async_read_tile(0, codeBook, cb_codeBook_addr); 
-    // const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_codeBook_addr);
-    // DPRINT << "tile# " << 1 << ", cb_codeBook_addr from 0 to 64 elements (bf16->f32): ";
-    // for (uint32_t i = 0; i < 64; i++) {
-    //     float val = bfloat16_to_float(ptr16[i]);
-    //     DPRINT << val << " ";
-    // }
-    // DPRINT << ENDL();
     noc_async_read_barrier();
     cb_push_back(cb_codeBook, 1);
-
-    cb_reserve_back(cb_rowIdx, 1);
-    uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
-    // const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_rowIdx_addr);
-    // DPRINT << "tile# " << 1 << ", cb_rowIdx_addr from 0 to 64 elements (bf16->f32): ";
+    // ptr16 = reinterpret_cast<const uint16_t*>(cb_codeBook_addr);
+    // DPRINT << "tile# " << 1 << ", cb_codeBook_addr from 0 to 1024 elements (bf16->f32): ";
     // for (uint32_t i = 0; i < 1024; i++) {
     //     float val = bfloat16_to_float(ptr16[i]);
     //     DPRINT << val << " ";
     // }
     // DPRINT << ENDL();
+    
+  
+
+    cb_reserve_back(cb_rowIdx, 1);
+    uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
+    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
     noc_async_read_barrier();
     cb_push_back(cb_rowIdx, 1);
+
+    // ptr16 = reinterpret_cast<const uint16_t*>(cb_rowIdx_addr);
+    // DPRINT << "tile# " << 1 << ", cb_rowIdx_addr from 1024 elements (bf16->f32): ";
+    // for (uint32_t i = 0; i < 1024; i++) {
+    //     float val = bfloat16_to_float(ptr16[i]);
+    //     DPRINT << val << " ";
+    // }
+    // DPRINT << ENDL();
+
+    
 
     // Loop over all the tiles and read them into the circular buffers
     for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
@@ -76,25 +83,38 @@ void kernel_main() {
         uint32_t cb_colIdx_addr = get_write_ptr(cb_colIdx);
         noc_async_read_tile(colIdx_tile_id, colIdx, cb_colIdx_addr);
         noc_async_read_barrier();
-        if (colIdx_tile_id == 1)    
-        {
-            const uint16_t* ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
-            DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
-            for (uint32_t i = 0; i < 1024; i++) {
-                float val = bfloat16_to_float(ptr16[i]);
-                DPRINT << val << " ";
-            }
-            DPRINT << ENDL();
-        }
         cb_push_back(cb_colIdx, 1);
+        // if (colIdx_tile_id < 4)    
+        // {
+        //     ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
+        //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
+        //     for (uint32_t i = 0; i < 1024; i++) {
+        //         float val = bfloat16_to_float(ptr16[i]);
+        //         DPRINT << val << " ";
+        //     }
+        //     DPRINT << ENDL();
+        // }
+        
 
         if(colIdx_tile_id / 16 != current_row_tile_id) {
+            DPRINT << "\nShould not come HERE !!!!!\n" << ENDL();
             current_row_tile_id ++;
             cb_reserve_back(cb_rowIdx, 1);
             uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
             noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
             noc_async_read_barrier();
             cb_push_back(cb_rowIdx, 1);
+            // if (current_row_tile_id < 4)    
+            // {
+            //     ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
+            //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
+            //     for (uint32_t i = 0; i < 1024; i++) {
+            //         float val = bfloat16_to_float(ptr16[i]);
+            //         DPRINT << val << " ";
+            //     }
+            //     DPRINT << ENDL();
+            // }
+            
         }
     }
 } // namespace NAMESPACE
