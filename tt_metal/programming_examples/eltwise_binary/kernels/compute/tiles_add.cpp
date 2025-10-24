@@ -52,7 +52,7 @@ void MAIN {
     // }
 
     cb_wait_front(cb_rowIdx, 1);
-    cb_get_tile(cb_rowIdx, current_row_tile_id , &rowIdx_tile_ptr_f32);
+    cb_get_tile(cb_rowIdx, 0 , &rowIdx_tile_ptr_f32);
     rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[8]; 
 
     // DPRINT << "tile# " << 1 << ", cb_rowIdx from 0 to 1024 elements (bf16->f32): ";
@@ -65,7 +65,7 @@ void MAIN {
 
     for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         cb_wait_front(cb_colIdx, 1);
-        cb_get_tile(cb_colIdx, colIdx_tile_id , &colIdx_tile_ptr_f32);
+        cb_get_tile(cb_colIdx, 0 , &colIdx_tile_ptr_f32);
         colIdx_tile_ptr_f32 = &colIdx_tile_ptr_f32[8];
         if (colIdx_tile_id <= 1)    
         {
@@ -77,7 +77,7 @@ void MAIN {
             DPRINT << ENDL();
         }
         cb_reserve_back(cb_out0, 1);
-        cb_get_tile(cb_out0, colIdx_tile_id , &out_tile_ptr_f32);
+        cb_get_tile(cb_out0, 0 , &out_tile_ptr_f32);
         out_tile_ptr_f32 = &out_tile_ptr_f32[8];
 
         // 1. Use 1 rowIdx for 16 colIdx        (broadcast)
@@ -111,7 +111,7 @@ void MAIN {
             current_row_tile_id ++;
             cb_pop_front(cb_rowIdx, 1);
             cb_wait_front(cb_rowIdx, 1);
-            cb_get_tile(cb_rowIdx, current_row_tile_id, &rowIdx_tile_ptr_f32);
+            cb_get_tile(cb_rowIdx, 0, &rowIdx_tile_ptr_f32);
             rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[8];
         }
 
