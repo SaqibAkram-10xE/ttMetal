@@ -284,13 +284,13 @@ int main(int argc, char** argv) {
                 if (std::abs(expected - actual) > eps) {
                     pass = false;
                     // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
-                    if (count < 1)
+                    if (count < 10)
                     {
                         fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
-                        // fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-                        // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
-                        //     fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
-                        // }
+                        fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
+                        for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
+                            fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
+                        }
                         count++;
                     }
                     

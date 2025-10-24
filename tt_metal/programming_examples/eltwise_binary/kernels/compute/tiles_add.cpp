@@ -67,17 +67,17 @@ void MAIN {
         cb_wait_front(cb_colIdx, 1);
         cb_get_tile(cb_colIdx, 0 , &colIdx_tile_ptr_f32);
         colIdx_tile_ptr_f32 = &colIdx_tile_ptr_f32[8];
-        if (colIdx_tile_id <= 1)    
-        {
-            DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
-            for (uint32_t i = 0; i < elements_per_tile_colIdx; i++) {
-                float val = bfloat16_to_float(colIdx_tile_ptr_f32[i]);
-                DPRINT << val << " ";
-            }
-            DPRINT << ENDL();
-        }
+        // if (colIdx_tile_id <= 1)    
+        // {
+        //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
+        //     for (uint32_t i = 0; i < elements_per_tile_colIdx; i++) {
+        //         float val = bfloat16_to_float(colIdx_tile_ptr_f32[i]);
+        //         DPRINT << val << " ";
+        //     }
+        //     DPRINT << ENDL();
+        // }
         cb_reserve_back(cb_out0, 1);
-        cb_get_tile(cb_out0, 0 , &out_tile_ptr_f32);
+        cb_get_tile(cb_out0, colIdx_tile_id , &out_tile_ptr_f32);
         out_tile_ptr_f32 = &out_tile_ptr_f32[8];
 
         // 1. Use 1 rowIdx for 16 colIdx        (broadcast)
