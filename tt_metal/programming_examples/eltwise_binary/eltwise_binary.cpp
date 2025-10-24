@@ -47,27 +47,27 @@ int main(int argc, char** argv) {
         // * Each tile is 32x32 elements
         // * Each element is a bfloat16 (2 bytes)
         constexpr uint32_t n_tiles_colIdx = 12;   // 16 or 64
-        // constexpr uint32_t n_tiles_codebook = 1;
-        // constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
+        constexpr uint32_t n_tiles_codebook = 1;
+        constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-        // constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-        // constexpr uint32_t elements_per_tile_codebook = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;//64;
+        constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
+        constexpr uint32_t elements_per_tile_codebook = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;//64;
 
         constexpr uint32_t tile_size_bytes_colIdx = sizeof(bfloat16) * elements_per_tile_colIdx;
-        // constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
-        // constexpr uint32_t tile_size_bytes_rowIdx = sizeof(bfloat16) * elements_per_tile_rowIdx;
+        constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
+        constexpr uint32_t tile_size_bytes_rowIdx = sizeof(bfloat16) * elements_per_tile_rowIdx;
 
         // Create 3 DRAM-backed mesh buffers: two inputs (src0, src1) and one output (dst).
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
             .page_size = tile_size_bytes_colIdx, //The page size of the buffer in bytes. Unlike the `loopback` example, we
                                           // need the page size to be the same as the tile size for a large portion of the NoC transfer APIs to work.
             .buffer_type = BufferType::DRAM}; // This is a DRAM buffer.
-        // distributed::DeviceLocalBufferConfig dram_config_rowIdx{
-        //     .page_size = tile_size_bytes_rowIdx, 
-        //     .buffer_type = BufferType::DRAM};
-        // distributed::DeviceLocalBufferConfig dram_config_codebook{
-        //     .page_size = tile_size_bytes_codebook,
-        //     .buffer_type = BufferType::DRAM};
+        distributed::DeviceLocalBufferConfig dram_config_rowIdx{
+            .page_size = tile_size_bytes_rowIdx, 
+            .buffer_type = BufferType::DRAM};
+        distributed::DeviceLocalBufferConfig dram_config_codebook{
+            .page_size = tile_size_bytes_codebook,
+            .buffer_type = BufferType::DRAM};
         // distributed::DeviceLocalBufferConfig dram_config{
         //     .page_size = tile_size_bytes_colIdx,
         //     .buffer_type = BufferType::DRAM};
@@ -77,17 +77,17 @@ int main(int argc, char** argv) {
         distributed::ReplicatedBufferConfig buffer_config{
             .size = n_tiles_colIdx * tile_size_bytes_colIdx // Total bytes per device (replicated across the mesh).
         };
-        // distributed::ReplicatedBufferConfig buffer_config_rowIdx{
-        //     .size = n_tiles_rowIdx * tile_size_bytes_rowIdx // Total bytes per device (replicated across the mesh).
-        // };
-        // distributed::ReplicatedBufferConfig buffer_config_codebook{
-        //     .size = n_tiles_codebook * tile_size_bytes_codebook // Total bytes per device (replicated across the mesh).
-        // };
+        distributed::ReplicatedBufferConfig buffer_config_rowIdx{
+            .size = n_tiles_rowIdx * tile_size_bytes_rowIdx // Total bytes per device (replicated across the mesh).
+        };
+        distributed::ReplicatedBufferConfig buffer_config_codebook{
+            .size = n_tiles_codebook * tile_size_bytes_codebook // Total bytes per device (replicated across the mesh).
+        };
 
 
         auto colIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
-        // auto codeBook_dram_buffer = distributed::MeshBuffer::create(buffer_config_codebook, dram_config_codebook, mesh_device.get());
-        // auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config_rowIdx, dram_config_rowIdx, mesh_device.get());
+        auto codeBook_dram_buffer = distributed::MeshBuffer::create(buffer_config_codebook, dram_config_codebook, mesh_device.get());
+        auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config_rowIdx, dram_config_rowIdx, mesh_device.get());
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
 
@@ -107,19 +107,18 @@ int main(int argc, char** argv) {
 
         std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution<int> dist_col(0, 15);
-        
         std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
         for (auto& val : colIdx_data)
             val = bfloat16(static_cast<float>(dist_col(rng)));
 
-        // std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
-        // for (size_t i = 0; i < codeBook_data.size(); ++i)
-        //     codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+        std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
+        for (size_t i = 0; i < codeBook_data.size(); ++i)
+            codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
 
-        // std::uniform_int_distribution<int> dist_row(0, 3);
-        // std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
-        // for (auto& val : rowIdx_data)
-        //     val = bfloat16(static_cast<float>(dist_row(rng)));
+        std::uniform_int_distribution<int> dist_row(0, 3);
+        std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
+        for (auto& val : rowIdx_data)
+            val = bfloat16(static_cast<float>(dist_row(rng)));
 
 
 
@@ -128,15 +127,15 @@ int main(int argc, char** argv) {
             fmt::print("{} ", float(codeBook_data[i]));
         fmt::print("\n");
 
-        // fmt::print("colIdx first 16: ");
-        // for (int i = 0; i < 16 && i < (int)colIdx_data.size(); ++i)
-        //     fmt::print("{} ", float(colIdx_data[i]));
-        // fmt::print("\n");
+        fmt::print("colIdx first 16: ");
+        for (int i = 0; i < 16 && i < (int)colIdx_data.size(); ++i)
+            fmt::print("{} ", float(colIdx_data[i]));
+        fmt::print("\n");
 
-        // fmt::print("rowIdx first 16: ");
-        // for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
-        //     fmt::print("{} ", float(rowIdx_data[i]));
-        // fmt::print("\n");
+        fmt::print("rowIdx first 16: ");
+        for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
+            fmt::print("{} ", float(rowIdx_data[i]));
+        fmt::print("\n");
 
 
 
@@ -147,8 +146,8 @@ int main(int argc, char** argv) {
 
         // Upload host vectors into the mesh buffers.
         distributed::EnqueueWriteMeshBuffer(cq, colIdx_dram_buffer, colIdx_data, false);
-        // distributed::EnqueueWriteMeshBuffer(cq, rowIdx_dram_buffer, rowIdx_data, false);
-        // distributed::EnqueueWriteMeshBuffer(cq, codeBook_dram_buffer, codeBook_data, false);
+        distributed::EnqueueWriteMeshBuffer(cq, rowIdx_dram_buffer, rowIdx_data, false);
+        distributed::EnqueueWriteMeshBuffer(cq, codeBook_dram_buffer, codeBook_data, false);
 
         // Create 3 circular buffers. Think them like pipes moving data from one core to another. cb_src0 and cb_src1 are used to
         // move data from the reader kernel to the compute kernel. cb_dst is used to move data from the compute kernel to the writer
@@ -166,17 +165,17 @@ int main(int argc, char** argv) {
                                                                               // the page size to the tile size (and thus
                                                                               // total_size / page_size = tiles_per is the number of
                                                                               // entries in the circular buffer)
-        // tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
-        // CreateCircularBuffer(program, core, CircularBufferConfig(
-        //     /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
-        //     /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::Float16_b}})
-        //     .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
+        tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
+        CreateCircularBuffer(program, core, CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
+            /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::Float16_b}})
+            .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
 
-        // tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
-        // CreateCircularBuffer(program, core, CircularBufferConfig(
-        //     /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
-        //     /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16_b}})
-        //     .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
+        tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
+        CreateCircularBuffer(program, core, CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
+            /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16_b}})
+            .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
         tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
         CreateCircularBuffer(program, core, CircularBufferConfig(
@@ -194,17 +193,15 @@ int main(int argc, char** argv) {
         // back to DRAM.
         std::vector<uint32_t> reader_compile_time_args;
         TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
-        // TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
-        // TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+        TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
+        TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
         auto reader = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/read_tiles.cpp",
             core,
             DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_compile_time_args});
-        
         std::vector<uint32_t> writer_compile_time_args;
         TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
-        
         auto writer = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/write_tile.cpp",
@@ -222,12 +219,12 @@ int main(int argc, char** argv) {
         // Set the runtime arguments for the kernels. This also registers
         // the kernels with the program.
         SetRuntimeArgs(program, reader, core, {colIdx_dram_buffer->address(),
-                                                 // rowIdx_dram_buffer->address(),
-                                                  // codeBook_dram_buffer->address(), 
+                                                 rowIdx_dram_buffer->address(),
+                                                  codeBook_dram_buffer->address(), 
                                                   n_tiles_colIdx});
         SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
-        SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx});
-                                                // n_tiles_rowIdx, elements_per_tile_rowIdx});
+        SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
+                                                n_tiles_rowIdx, elements_per_tile_rowIdx});
 
         // We have setup the program. Now we queue the kernel for execution. The final argument is set to false. This indicates
         // to Metalium that the operation is non-blocking. The function is allowed to return upon the kernel being queued. We must
@@ -272,42 +269,42 @@ int main(int argc, char** argv) {
 
 
 
-        // for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
-        //     float rowidx = float(rowIdx_data[ idx_b / 16 ]);
-        //     float colidx = float(colIdx_data[idx_b]);
-        //     uint8_t codebook_index = (uint8_t)(colidx + (rowidx * 16.0f));
+        for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
+            float rowidx = float(rowIdx_data[ idx_b / 16 ]);
+            float colidx = float(colIdx_data[idx_b]);
+            uint8_t codebook_index = (uint8_t)(colidx + (rowidx * 16.0f));
 
-        //     // cout << " idx_b / 16 ="<< idx_b / 16 << " idxbCount=" << idxbCount << " sizeof(row_indices) "<< row_indices.size() << "\n";
-        //     if(codebook_index >= codeBook_data.size()) {
-        //         fmt::print(stderr, "codebook_index out of bounds\n");
-        //         fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-        //     }else {
-        //         const float expected = static_cast<float>(codeBook_data[codebook_index]);
-        //         const float actual = static_cast<float>(result_vec[idx_b]);
-        //         if (std::abs(expected - actual) > eps) {
-        //             pass = false;
-        //             // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
-        //             if (count < 1)
-        //             {
-        //                 fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
-        //                 // fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-        //                 // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
-        //                 //     fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
-        //                 // }
-        //                 count++;
-        //             }
+            // cout << " idx_b / 16 ="<< idx_b / 16 << " idxbCount=" << idxbCount << " sizeof(row_indices) "<< row_indices.size() << "\n";
+            if(codebook_index >= codeBook_data.size()) {
+                fmt::print(stderr, "codebook_index out of bounds\n");
+                fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
+            }else {
+                const float expected = static_cast<float>(codeBook_data[codebook_index]);
+                const float actual = static_cast<float>(result_vec[idx_b]);
+                if (std::abs(expected - actual) > eps) {
+                    pass = false;
+                    // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
+                    if (count < 1)
+                    {
+                        fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
+                        // fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
+                        // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
+                        //     fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
+                        // }
+                        count++;
+                    }
                     
-        //             // fmt::print(".");
-        //         }else{
-        //             if (count1 < 64){
-        //                 // fmt::print(stderr, "Correct Result index {}:\t expected {}, got {}\n", idx_b, expected, actual);
-        //                 // fmt::print(".");
+                    // fmt::print(".");
+                }else{
+                    if (count1 < 64){
+                        // fmt::print(stderr, "Correct Result index {}:\t expected {}, got {}\n", idx_b, expected, actual);
+                        // fmt::print(".");
 
-        //                 count1++;
-        //             }
-        //         }
-        //     }
-        // }
+                        count1++;
+                    }
+                }
+            }
+        }
 
 
 
