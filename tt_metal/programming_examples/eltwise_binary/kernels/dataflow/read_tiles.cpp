@@ -39,18 +39,19 @@ void kernel_main() {
     // easy.
     constexpr auto colIdx_args = TensorAccessorArgs<0>();
     const auto colIdx = TensorAccessor(colIdx_args, colIdx_addr, tile_size_bytes);
-    constexpr auto rowIdx_args = TensorAccessorArgs<colIdx_args.next_compile_time_args_offset()>();
-    const auto rowIdx = TensorAccessor(rowIdx_args, rowIdx_addr, tile_size_bytes_rowIdx);
-    constexpr auto codeBook_args = TensorAccessorArgs<rowIdx_args.next_compile_time_args_offset()>();
-    const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes_codebook);
+    // constexpr auto rowIdx_args = TensorAccessorArgs<colIdx_args.next_compile_time_args_offset()>();
+    // const auto rowIdx = TensorAccessor(rowIdx_args, rowIdx_addr, tile_size_bytes_rowIdx);
+    // constexpr auto codeBook_args = TensorAccessorArgs<rowIdx_args.next_compile_time_args_offset()>();
+    // const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes_codebook);
 
     uint32_t current_row_tile_id = 0;
 
-    cb_reserve_back(cb_codeBook, 1);
-    uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
-    noc_async_read_tile(0, codeBook, cb_codeBook_addr); 
-    noc_async_read_barrier();
-    cb_push_back(cb_codeBook, 1);
+    // cb_reserve_back(cb_codeBook, 1);
+    // uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
+    // noc_async_read_tile(0, codeBook, cb_codeBook_addr); 
+    // noc_async_read_barrier();
+    // cb_push_back(cb_codeBook, 1);
+    
     // ptr16 = reinterpret_cast<const uint16_t*>(cb_codeBook_addr);
     // DPRINT << "tile# " << 1 << ", cb_codeBook_addr from 0 to 1024 elements (bf16->f32): ";
     // for (uint32_t i = 0; i < 1024; i++) {
@@ -61,11 +62,11 @@ void kernel_main() {
     
   
 
-    cb_reserve_back(cb_rowIdx, 1);
-    uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
-    noc_async_read_barrier();
-    cb_push_back(cb_rowIdx, 1);
+    // cb_reserve_back(cb_rowIdx, 1);
+    // uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
+    // noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
+    // noc_async_read_barrier();
+    // cb_push_back(cb_rowIdx, 1);
 
     // ptr16 = reinterpret_cast<const uint16_t*>(cb_rowIdx_addr);
     // DPRINT << "tile# " << 1 << ", cb_rowIdx_addr from 1024 elements (bf16->f32): ";
@@ -96,25 +97,25 @@ void kernel_main() {
         // }
         
 
-        if(colIdx_tile_id / 16 != current_row_tile_id) {
-            DPRINT << "\nShould not come HERE !!!!!\n" << ENDL();
-            current_row_tile_id ++;
-            cb_reserve_back(cb_rowIdx, 1);
-            uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-            noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
-            noc_async_read_barrier();
-            cb_push_back(cb_rowIdx, 1);
-            // if (current_row_tile_id < 4)    
-            // {
-            //     ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
-            //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
-            //     for (uint32_t i = 0; i < 1024; i++) {
-            //         float val = bfloat16_to_float(ptr16[i]);
-            //         DPRINT << val << " ";
-            //     }
-            //     DPRINT << ENDL();
-            // }
+        // if(colIdx_tile_id / 16 != current_row_tile_id) {
+        //     DPRINT << "\nShould not come HERE !!!!!\n" << ENDL();
+        //     current_row_tile_id ++;
+        //     cb_reserve_back(cb_rowIdx, 1);
+        //     uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
+        //     noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
+        //     noc_async_read_barrier();
+        //     cb_push_back(cb_rowIdx, 1);
+        //     // if (current_row_tile_id < 4)    
+        //     // {
+        //     //     ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
+        //     //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
+        //     //     for (uint32_t i = 0; i < 1024; i++) {
+        //     //         float val = bfloat16_to_float(ptr16[i]);
+        //     //         DPRINT << val << " ";
+        //     //     }
+        //     //     DPRINT << ENDL();
+        //     // }
             
-        }
+        // }
     }
 } // namespace NAMESPACE
