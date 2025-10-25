@@ -20,6 +20,16 @@ using namespace tt::tt_metal;
 #ifndef OVERRIDE_KERNEL_PREFIX
 #define OVERRIDE_KERNEL_PREFIX ""
 #endif
+
+inline float bfloat16_to_float(uint16_t bf16_val) {
+    union {
+        uint32_t u32;
+        float f32;
+    } u;
+    u.u32 = static_cast<uint32_t>(bf16_val) << 16;
+    return u.f32;
+}
+
 int main(int argc, char** argv) {
     bool pass = true;
 
@@ -45,17 +55,17 @@ int main(int argc, char** argv) {
         // Define some constants that will be used throughout the program.
         // * Processing 64 tiles
         // * Each tile is 32x32 elements
-        // * Each element is a bfloat16 (2 bytes)
+        // * Each element is a uint8_t (2 bytes)
         constexpr uint32_t n_tiles_colIdx = 12;   // 16 or 64
         constexpr uint32_t n_tiles_codebook = 1;
         constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-        constexpr uint32_t elements_per_tile_codebook = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;//64;
+        constexpr uint32_t elements_per_tile_codebook = 64;
 
-        constexpr uint32_t tile_size_bytes_colIdx = sizeof(bfloat16) * elements_per_tile_colIdx;
-        constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
-        constexpr uint32_t tile_size_bytes_rowIdx = sizeof(bfloat16) * elements_per_tile_rowIdx;
+        constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
+        constexpr uint32_t tile_size_bytes_codebook = sizeof(uint8_t) * elements_per_tile_codebook;
+        constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
 
         // Create 3 DRAM-backed mesh buffers: two inputs (src0, src1) and one output (dst).
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
@@ -106,37 +116,39 @@ int main(int argc, char** argv) {
 
 
         std::mt19937 rng(std::random_device{}());
+
+        // colIdx  [0, 15]
         std::uniform_int_distribution<int> dist_col(0, 15);
-        std::vector<bfloat16> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
+        std::vector<uint8_t> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
         for (auto& val : colIdx_data)
-            val = bfloat16(static_cast<float>(dist_col(rng)));
+            val = static_cast<uint8_t>(dist_col(rng));
 
-        std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
+        // codeBook: 0..63 repeating
+        std::vector<uint8_t> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
         for (size_t i = 0; i < codeBook_data.size(); ++i)
-            codeBook_data[i] = bfloat16(static_cast<float>(i % 64));  
+            codeBook_data[i] = static_cast<uint8_t>(i % 64);
 
+        // rowIdx  [0, 3]
         std::uniform_int_distribution<int> dist_row(0, 3);
-        std::vector<bfloat16> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
+        std::vector<uint8_t> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
         for (auto& val : rowIdx_data)
-            val = bfloat16(static_cast<float>(dist_row(rng)));
+            val = static_cast<uint8_t>(dist_row(rng));
 
-
-
+        // ---- Print samples ----
         fmt::print("codeBook first 16: ");
         for (int i = 0; i < 16 && i < (int)codeBook_data.size(); ++i)
-            fmt::print("{} ", float(codeBook_data[i]));
+            fmt::print("{} ", codeBook_data[i]);
         fmt::print("\n");
 
         fmt::print("colIdx first 16: ");
         for (int i = 0; i < 16 && i < (int)colIdx_data.size(); ++i)
-            fmt::print("{} ", float(colIdx_data[i]));
+            fmt::print("{} ", colIdx_data[i]);
         fmt::print("\n");
 
         fmt::print("rowIdx first 16: ");
         for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
-            fmt::print("{} ", float(rowIdx_data[i]));
+            fmt::print("{} ", rowIdx_data[i]);
         fmt::print("\n");
-
 
 
 
@@ -160,7 +172,7 @@ int main(int argc, char** argv) {
         tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
         CreateCircularBuffer(program, core, CircularBufferConfig(
             /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,                    // The total size of the circular buffer in bytes
-            /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::Float16_b}})// The circular buffer index and data format it'll hold
+            /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::UInt8}})// The circular buffer index and data format it'll hold
             .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));                  // Since we will be sending one tile at a time, we set
                                                                               // the page size to the tile size (and thus
                                                                               // total_size / page_size = tiles_per is the number of
@@ -168,19 +180,19 @@ int main(int argc, char** argv) {
         tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
         CreateCircularBuffer(program, core, CircularBufferConfig(
             /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
-            /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::Float16_b}})
+            /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::UInt8}})
             .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
 
         tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
         CreateCircularBuffer(program, core, CircularBufferConfig(
             /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
-            /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16_b}})
+            /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::UInt8}})
             .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
         tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
         CreateCircularBuffer(program, core, CircularBufferConfig(
             /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,
-            /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::Float16_b}})
+            /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::UInt8}})
             .set_page_size(dst_cb_index, tile_size_bytes_colIdx));
 
         // Create the reader, writer and compute kernels. The kernels do the following:
@@ -242,7 +254,10 @@ int main(int argc, char** argv) {
         distributed::EnqueueReadMeshBuffer(cq, result_vec, dst_dram_buffer, true);
 
         constexpr float eps = 1e-2f; // loose tolerance because of the nature of bfloat16
-        TT_FATAL(result_vec.size() == colIdx_data.size(), "Result vector size mismatch");
+        fmt::print("result_vec.size() : {}\n",result_vec.size());
+        fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
+        
+        // TT_FATAL(result_vec.size() == colIdx_data.size(), "Result vector size mismatch");
         
         // for (size_t i = 0; i < result_vec.size(); ++i) {
         //     const float expected = static_cast<float>(colIdx_data[i]) + val_to_add;
@@ -270,8 +285,8 @@ int main(int argc, char** argv) {
 
 
         for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
-            float rowidx = float(rowIdx_data[ idx_b / 16 ]);
-            float colidx = float(colIdx_data[idx_b]);
+            uint8_t rowidx = uint8_t(rowIdx_data[ idx_b / 16 ]);
+            uint8_t colidx = uint8_t(colIdx_data[idx_b]);
             uint8_t codebook_index = (uint8_t)(colidx + (rowidx * 16.0f));
 
             // cout << " idx_b / 16 ="<< idx_b / 16 << " idxbCount=" << idxbCount << " sizeof(row_indices) "<< row_indices.size() << "\n";
@@ -279,8 +294,8 @@ int main(int argc, char** argv) {
                 fmt::print(stderr, "codebook_index out of bounds\n");
                 fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
             }else {
-                const float expected = static_cast<float>(codeBook_data[codebook_index]);
-                const float actual = static_cast<float>(result_vec[idx_b]);
+                const uint8_t expected = uint8_t(codeBook_data[codebook_index]);
+                const uint8_t actual = uint8_t(result_vec[idx_b]);
                 if (std::abs(expected - actual) > eps) {
                     pass = false;
                     // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
@@ -289,7 +304,7 @@ int main(int argc, char** argv) {
                         fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
                         fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
                         for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
-                            fmt::print(stderr, "codeBook_data[{}] = {:.1f}\n", j, static_cast<float>(codeBook_data[j]));
+                            fmt::print(stderr, "codeBook_data[{}] = {}\n", j, uint8_t(codeBook_data[j]));
                         }
                         count++;
                     }

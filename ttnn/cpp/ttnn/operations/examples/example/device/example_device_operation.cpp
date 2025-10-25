@@ -22,23 +22,27 @@ void ExampleDeviceOperation::validate_on_program_cache_hit(
     const operation_attributes_t& attributes, const tensor_args_t& tensor_args) {}
 
 ExampleDeviceOperation::spec_return_value_t ExampleDeviceOperation::compute_output_specs(
+    //My output would be same as ColIdx_tensor
     const operation_attributes_t&, const tensor_args_t& tensor_args) {
-    const auto& input_tensor = tensor_args.input_tensor;
+    const auto& ColIdx_tensor = tensor_args.ColIdx_tensor;
     return TensorSpec(
-        input_tensor.logical_shape(),
+        ColIdx_tensor.logical_shape(),
         tt::tt_metal::TensorLayout(
-            input_tensor.dtype(), tt::tt_metal::PageConfig(input_tensor.layout()), MemoryConfig{}));
+            ColIdx_tensor.dtype(), tt::tt_metal::PageConfig(ColIdx_tensor.layout()), MemoryConfig{}));
 }
 
 ExampleDeviceOperation::tensor_return_value_t ExampleDeviceOperation::create_output_tensors(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     auto output_spec = compute_output_specs(operation_attributes, tensor_args);
-    return create_device_tensor(output_spec, tensor_args.input_tensor.device());
+    return create_device_tensor(output_spec, tensor_args.ColIdx_tensor.device());
 }
 
 std::tuple<ExampleDeviceOperation::operation_attributes_t, ExampleDeviceOperation::tensor_args_t>
-ExampleDeviceOperation::invoke(const Tensor& input_tensor) {
-    return {operation_attributes_t{true, 42}, tensor_args_t{input_tensor}};
+ExampleDeviceOperation::invoke(const Tensor& RowIdx_tensor,
+                               const Tensor& CodeBook_tensor,
+                               const Tensor& ColIdx_tensor) {
+    return {operation_attributes_t{true, 42}, 
+            tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor}};
 }
 
 }  // namespace ttnn::operations::examples

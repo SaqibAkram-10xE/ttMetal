@@ -27,7 +27,11 @@ struct ExampleDeviceOperation {
     // tensors, etc.
     struct tensor_args_t {
         // This example will use a tensor that can only be used as an input
-        const Tensor& input_tensor;
+        const Tensor& RowIdx_tensor;
+        const Tensor& CodeBook_tensor;
+        const Tensor& ColIdx_tensor;
+        // const Tensor& input_tensor;
+
 
         // However, the following examples show what else can be done with tensor_args_t
 
@@ -128,7 +132,10 @@ struct ExampleDeviceOperation {
     // This is the only method that is called by the user
     // The user will be able to call the operation using `tensor_return_value_t output =
     // ttnn::prim::example(input_tensor)` after the op is registered
-    static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& input_tensor);
+    static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& RowIdx_tensor,
+                                                                const Tensor& CodeBook_tensor,
+                                                                const Tensor& ColIdx_tensor, );
+    // static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& input_tensor);s
 
     // Optional methods
 
