@@ -234,7 +234,7 @@ void matmul_single_core(
         Nt,  // Nt
         codebook_num_elements,
         rowIdx_Num_tiles,
-        ColIdx_Num_ele
+        rowIdx_Num_tiles,//ColIdx_Num_ele
         // Num_tiles,
          
     };

@@ -5,7 +5,7 @@
 #include "example_device_operation.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/tensor_accessor_args.hpp>
-
+/*
 namespace ttnn::operations::examples {
 ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::MultiCore::create(
     const operation_attributes_t& operation_attributes,
@@ -159,3 +159,4 @@ void ExampleDeviceOperation::MultiCore::override_runtime_arguments(
 }
 
 }  // namespace ttnn::operations::examples
+*/
