@@ -31,7 +31,7 @@ void kernel_main() {
     const uint32_t tile_size_bytes = get_tile_size(cb_colIdx);  // typically 2048
     const uint32_t tile_size_bytes_rowIdx = get_tile_size(cb_rowIdx);  // typically 2048
     const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // typically 2048
-    const uint16_t* ptr16;
+    const uint8_t* ptr16;
     // Create address generators for the input buffers. Consider these the
     // pointers for interleaved buffers
     // Setting the page size to be tile_size_bytes works because we set it up
@@ -84,12 +84,12 @@ void kernel_main() {
         noc_async_read_tile(colIdx_tile_id, colIdx, cb_colIdx_addr);
         noc_async_read_barrier();
         cb_push_back(cb_colIdx, 1);
-        // if (colIdx_tile_id < 4)    
+        // if (colIdx_tile_id ==2)    
         // {
-        //     ptr16 = reinterpret_cast<const uint16_t*>(cb_colIdx_addr);
+        //     ptr16 = reinterpret_cast<const uint8_t*>(cb_colIdx_addr);
         //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
         //     for (uint32_t i = 0; i < 1024; i++) {
-        //         float val = bfloat16_to_float(ptr16[i]);
+        //         int val = (ptr16[i]);
         //         DPRINT << val << " ";
         //     }
         //     DPRINT << ENDL();

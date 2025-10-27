@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
         // * Processing 64 tiles
         // * Each tile is 32x32 elements
         // * Each element is a uint8_t (2 bytes)
-        constexpr uint32_t n_tiles_colIdx = 12;   // 16 or 64
+        constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
         constexpr uint32_t n_tiles_codebook = 1;
         constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
 
         fmt::print("rowIdx first 16: ");
         for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
-            fmt::print("{} ", rowIdx_data[i]);
+            fmt::print("{}:{} ",i , rowIdx_data[i]);
         fmt::print("\n");
 
 
@@ -213,6 +213,7 @@ int main(int argc, char** argv) {
             core,
             DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_compile_time_args});
         std::vector<uint32_t> writer_compile_time_args;
+        
         TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
         auto writer = CreateKernel(
             program,
@@ -250,14 +251,14 @@ int main(int argc, char** argv) {
         // distributed::EnqueueMeshWorkload(cq, workload, true);
 
         // Read the output buffer (from shard at mesh coordinate {0,0} on a unit mesh) and validate.
-        std::vector<bfloat16> result_vec;
+        std::vector<uint8_t> result_vec;
         distributed::EnqueueReadMeshBuffer(cq, result_vec, dst_dram_buffer, true);
 
         constexpr float eps = 1e-2f; // loose tolerance because of the nature of bfloat16
-        fmt::print("result_vec.size() : {}\n",result_vec.size());
-        fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
+        // fmt::print("result_vec.size() : {}\n",result_vec.size());
+        // fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
         
-        // TT_FATAL(result_vec.size() == colIdx_data.size(), "Result vector size mismatch");
+        TT_FATAL(result_vec.size() == colIdx_data.size(), "Result vector size mismatch");
         
         // for (size_t i = 0; i < result_vec.size(); ++i) {
         //     const float expected = static_cast<float>(colIdx_data[i]) + val_to_add;
@@ -285,27 +286,27 @@ int main(int argc, char** argv) {
 
 
         for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
-            uint8_t rowidx = uint8_t(rowIdx_data[ idx_b / 16 ]);
-            uint8_t colidx = uint8_t(colIdx_data[idx_b]);
-            uint8_t codebook_index = (uint8_t)(colidx + (rowidx * 16.0f));
+            int rowidx = (int)(rowIdx_data[(int)( idx_b / 16) ]);
+            int colidx = (int)(colIdx_data[idx_b]);
+            int codebook_index = (int)(colidx + (rowidx * 16.0f));
 
             // cout << " idx_b / 16 ="<< idx_b / 16 << " idxbCount=" << idxbCount << " sizeof(row_indices) "<< row_indices.size() << "\n";
             if(codebook_index >= codeBook_data.size()) {
                 fmt::print(stderr, "codebook_index out of bounds\n");
                 fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
             }else {
-                const uint8_t expected = uint8_t(codeBook_data[codebook_index]);
-                const uint8_t actual = uint8_t(result_vec[idx_b]);
-                if (std::abs(expected - actual) > eps) {
+                const int expected = int(codeBook_data[codebook_index]);
+                const int result = int(result_vec[idx_b]);
+                if (std::abs(expected - result) > eps) {
                     pass = false;
                     // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
-                    if (count < 10)
+                    if (count < 20)
                     {
-                        fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, actual);
+                        fmt::print(stderr, "Result mismatch at index {}: expected {}, got {}\n", idx_b, expected, result);
                         fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-                        for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
-                            fmt::print(stderr, "codeBook_data[{}] = {}\n", j, uint8_t(codeBook_data[j]));
-                        }
+                        // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
+                        //     fmt::print(stderr, "codeBook_data[{}] = {}\n", j, int(codeBook_data[j]));
+                        // }
                         count++;
                     }
                     
