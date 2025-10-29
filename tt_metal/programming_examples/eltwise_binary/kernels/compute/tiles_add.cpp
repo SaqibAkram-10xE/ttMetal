@@ -20,98 +20,62 @@ static int count = 0;
 static int count1 = 0;
 namespace NAMESPACE {
 void MAIN {
-
     uint32_t n_tiles_colIdx = get_arg_val<uint32_t>(0);
     uint32_t elements_per_tile_colIdx = get_arg_val<uint32_t>(1);
     uint32_t n_tiles_rowIdx = get_arg_val<uint32_t>(2);
     uint32_t elements_per_tile_row = get_arg_val<uint32_t>(3);
-
     constexpr auto cb_colIdx = tt::CBIndex::c_0;
     constexpr auto cb_rowIdx = tt::CBIndex::c_1;
     constexpr auto cb_codeBook = tt::CBIndex::c_2;
     constexpr auto cb_out0 = tt::CBIndex::c_16;
-
-    volatile uint8_t* colIdx_tile_ptr_f32    = nullptr;
-    volatile uint8_t* rowIdx_tile_ptr_f32     = nullptr;
-    volatile uint8_t* codeBook_tile_ptr_f32 = nullptr;
-    volatile uint8_t* out_tile_ptr_f32 = nullptr;
-    // Fetch row tiles on demand; initialize current id to 0
+    
+    volatile uint8_t* colIdx_tile_ptr = nullptr;
+    volatile uint8_t* rowIdx_tile_ptr = nullptr;
+    volatile uint16_t* codeBook_tile_ptr = nullptr;
+    volatile uint16_t* out_tile_ptr = nullptr;
     uint32_t current_row_tile_id = 0;
 
     cb_wait_front(cb_codeBook, 1);
-    cb_get_tile(cb_codeBook, 0 , &codeBook_tile_ptr_f32);
-    codeBook_tile_ptr_f32 = &codeBook_tile_ptr_f32[16];
-
-    // if (colIdx_tile_id <= 3)    
-    // {
-    //     DPRINT << "tile# " << 1 << ", cb_codeBook from 0 to 1024 elements (bf16->f32): ";
-    //     for (uint32_t i = 0; i < 1024; i++) {
-    //         float val = bfloat16_to_float(codeBook_tile_ptr_f32[i]);
-    //         DPRINT << val << " ";
-    //     }
-    //     DPRINT << ENDL();
-    // }
-
+    cb_get_tile(cb_codeBook, 0 , &codeBook_tile_ptr);
+    codeBook_tile_ptr = &codeBook_tile_ptr[8]; // in fp16
+    
     cb_wait_front(cb_rowIdx, 1);
-    cb_get_tile(cb_rowIdx, 0 , &rowIdx_tile_ptr_f32);
-    rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[16]; 
+    cb_get_tile(cb_rowIdx, 0 , &rowIdx_tile_ptr);
+    rowIdx_tile_ptr = &rowIdx_tile_ptr[16]; 
 
-    // DPRINT << "tile# " << 1 << ", cb_rowIdx from 0 to 1024 elements (bf16->f32): ";
-    // for (uint32_t i = 0; i < 1024; i++) {
-    //     float val = bfloat16_to_float(rowIdx_tile_ptr_f32[i]);
-    //     DPRINT << val << " ";
-    // }
-    // DPRINT << ENDL();
-
-
+    static uint16_t outIdx = 0;
+    
     for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         cb_wait_front(cb_colIdx, 1);
-        cb_get_tile(cb_colIdx, 0 , &colIdx_tile_ptr_f32);
-        colIdx_tile_ptr_f32 = &colIdx_tile_ptr_f32[16];
-        // if (colIdx_tile_id == 2)    
-        // {
-        //     DPRINT << "tile# " << colIdx_tile_id << ", cb_colIdx_addr from 0 to 1024 elements (bf16->f32): ";
-        //     for (uint32_t i = 0; i < 64 /*elements_per_tile_colIdx*/; i++) {
-        //         int val = (int)(colIdx_tile_ptr_f32[i]);
-        //         DPRINT << val << " ";
-        //     }
-        //     DPRINT << ENDL();
-        // }
-
-        cb_reserve_back(cb_out0, 1);
-        cb_get_tile(cb_out0, 0 , &out_tile_ptr_f32);
-        out_tile_ptr_f32 = &out_tile_ptr_f32[16];
-
-        // 1. Use 1 rowIdx for 16 colIdx        (broadcast)
-        // 2. Multiply rowIdx by 16             (bitshift / multiplier)
-        // 3. Add it colIdx to get index        (Addition)
-        // 4. Get codebook value at the index   (----)
+        cb_get_tile(cb_colIdx, 0 , &colIdx_tile_ptr);
+        colIdx_tile_ptr = &colIdx_tile_ptr[16];
     
-        // rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[(64 * colIdx_tile_id)];
-        // if(colIdx_tile_id == 2){
-        //     DPRINT << "tile# " << colIdx_tile_id << ", cb_rowIdx from 0 to 64 elements: ";
-        //     for (uint32_t i = 0; i < 1024; i++) {
-        //         int val = (rowIdx_tile_ptr_f32[i]);
-        //         DPRINT << i << ": " << val << " ";
-        //     }
-        //     DPRINT << ENDL();
+        
+        cb_reserve_back(cb_out0, 1); // seems not working
+        cb_get_tile(cb_out0, colIdx_tile_id , &out_tile_ptr);
+        out_tile_ptr = &out_tile_ptr[8]; //in bfloat16
+        // if(outIdx == 1){
+        //     outIdx = 0;
+        // }else{
+        //     outIdx++;
         // }
+        DPRINT << "PRODUCER: col_tile_id=" << (int)colIdx_tile_id
+                << " reserved_out_ptr=" << (int)out_tile_ptr << ENDL();
+
+        // DPRINT << "PRODUCER: out_ptr_offset=" << (uintptr_t)out_ptr_offset << ENDL();
+
+
         int rowChunkId = 1024 * colIdx_tile_id;
-
         for(size_t idx_b = 0; idx_b < elements_per_tile_colIdx; idx_b++) {
-            // load row and col bfloat16 values and create codebook index
-            // int rowidx = (int)(rowIdx_tile_ptr_f32[(int)(idx_b / 16) ]);
-
-            int rowidx = (int)(rowIdx_tile_ptr_f32[(int)((idx_b + rowChunkId) / 16) ]);
-            int colidx = (int)(colIdx_tile_ptr_f32[idx_b]);
-            // int codebook_index = (int)(colidx + (rowidx * 16.0f));
+            int rowidx = (int)(rowIdx_tile_ptr[(int)((idx_b + rowChunkId) / 16) ]);
+            int colidx = (int)(colIdx_tile_ptr[idx_b]);
             int codebook_index = (int)(colidx + (rowidx << 4));
-            
-            // if((idx_b == 0) && (colIdx_tile_id == 2)) {
-            //     DPRINT << "idx: " << (int)idx_b << " tile # " << colIdx_tile_id;
-            //     DPRINT << " codebook_index="<< (int)codebook_index << " rowidx=" << (int)rowidx << " colidx=" << (int)colidx << "\n";
-            // }
-            
+            if((idx_b == 0) && (colIdx_tile_id < n_tiles_colIdx)) {
+                DPRINT << "idx: " << (int)idx_b << " tile # " << colIdx_tile_id;
+                DPRINT << " codebook_index="<< (int)codebook_index << " rowidx=" << (int)rowidx << " colidx=" << (int)colidx << "\n";
+                float value = bfloat16_to_float(codeBook_tile_ptr[codebook_index]);
+                DPRINT << value << ENDL();
+            }
             if(codebook_index >= 64) {
                 if(count < 3) {
                     DPRINT <<"Error idx_b: " << (int)idx_b << " col_tile #: " << (int)colIdx_tile_id << ".\t";
@@ -119,46 +83,41 @@ void MAIN {
                 }
                 count++;
             } else {
-                // DPRINT << "!" << ENDL();
-                
-                if((count1 < 1) && (colIdx_tile_id == 0)) {
-                DPRINT <<"out_tile_" << colIdx_tile_id << ENDL();
-                    // DPRINT <<"codebook_index="<< (int)codebook_index << " rowidx=" << (int)rowidx << " colidx=" << (int)colidx << "\n";
+                out_tile_ptr[idx_b] = (codeBook_tile_ptr[codebook_index]);
+
+                if((count1 < 40) && (colIdx_tile_id < n_tiles_colIdx)) {
+                    DPRINT << bfloat16_to_float(out_tile_ptr[idx_b]) << " ";   
+                    // DPRINT << "Tile:" << (int)colIdx_tile_id << ", index:" << (int)idx_b;// ENDL();
+                    // DPRINT << ", codebook_index="<< (int)codebook_index << " rowidx=" << (int)rowidx << " colidx=" << (int)colidx << "\n";
                 }
-                if(colIdx_tile_id == 0){
+                if(colIdx_tile_id < n_tiles_colIdx){
                     count1++;
                 }
-
-                out_tile_ptr_f32[idx_b] = (codeBook_tile_ptr_f32[codebook_index]);
-                if(colIdx_tile_id == 0)
-                {
-                    DPRINT << (int)out_tile_ptr_f32[idx_b] << " ";   
-                }
-
             }
-            
         }
         DPRINT << ENDL();
-
-        if(colIdx_tile_id / 16 != current_row_tile_id) {
-            current_row_tile_id ++;
-            cb_pop_front(cb_rowIdx, 1);
-            cb_wait_front(cb_rowIdx, 1);
-            cb_get_tile(cb_rowIdx, 0, &rowIdx_tile_ptr_f32);
-            rowIdx_tile_ptr_f32 = &rowIdx_tile_ptr_f32[16];
-        }
-
-        pack_tile(0, cb_out0);
+        count1 = 0;
+       
         cb_push_back(cb_out0, 1);
+        DPRINT << "PRODUCER: pushed back tile for col_tile_id=" << (int)colIdx_tile_id << ENDL();
 
         cb_pop_front(cb_colIdx, 1);
     }
-
     cb_pop_front(cb_rowIdx, 1);
     cb_pop_front(cb_codeBook, 1);
 }
 }  // namespace NAMESPACE
 
+
+        // get_cb_capacity(cb_out0)
+
+// if(colIdx_tile_id / 16 != current_row_tile_id) {
+//             current_row_tile_id ++;
+//             cb_pop_front(cb_rowIdx, 1);
+//             cb_wait_front(cb_rowIdx, 1);
+//             cb_get_tile(cb_rowIdx, 0, &rowIdx_tile_ptr);
+//             rowIdx_tile_ptr = &rowIdx_tile_ptr[16];
+//         }
 
 
 
