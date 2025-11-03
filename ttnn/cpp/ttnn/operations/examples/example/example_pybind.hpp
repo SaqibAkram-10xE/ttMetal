@@ -1,43 +1,46 @@
-
 // SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
-#include "device/example_device_operation.hpp"
+#include "ttnn-pybind/pybind_fwd.hpp"
 
 namespace ttnn::operations::examples {
+namespace py = pybind11;
 
-struct ExampleOperation {
-    static Tensor invoke(const Tensor& RowIdx_tensor,
-                         const Tensor& CodeBook_tensor,
-                         const Tensor& ColIdx_tensor);
-};
-
-// A composite operation is an operation that calls multiple operations in sequence
-// It is written using invoke and can be used to call multiple primitive and/or composite operations
-struct CompositeExampleOperation {
-    // The user will be able to call this method as `Tensor output = ttnn::composite_example(input_tensor)` after the op
-    // is registered
-
-
-    //FIXME:
-    // static Tensor invoke(const Tensor& input_tensor) {
-    //     auto copy = prim::example(input_tensor);
-    //     auto another_copy = prim::example(copy);
-    //     return another_copy;
-    // }
-};
+void bind_example_operation(py::module& module);
 
 }  // namespace ttnn::operations::examples
 
-namespace ttnn {
-constexpr auto example =
-    ttnn::register_operation<"ttnn::example", operations::examples::ExampleOperation>();
-}
+/*
+void bind_example_operation(py::module& module) {
+    bind_registered_operation(
+        module,
+        ttnn::prim::example,
+        R"doc(example(input_tensor: ttnn.Tensor) -> ttnn.Tensor)doc",
 
-namespace ttnn {
-constexpr auto composite_example =
-    ttnn::register_operation<"ttnn::composite_example", operations::examples::CompositeExampleOperation>();
-}  // namespace ttnn
+        // Add pybind overloads for the C++ APIs that should be exposed to python
+        // There should be no logic here, just a call to `self` with the correct arguments
+        // This specific function can be called from python as `ttnn.prim.example(input_tensor)` or
+        // `ttnn.prim.example(input_tensor)`
+        ttnn::pybind_overload_t{
+            [](const decltype(ttnn::prim::example)& self, const ttnn::Tensor& input_tensor) -> ttnn::Tensor {
+                return self(input_tensor);
+            },
+            py::arg("input_tensor")});
+
+    bind_registered_operation(
+        module,
+        ttnn::composite_example,
+        R"doc(composite_example(input_tensor: ttnn.Tensor) -> ttnn.Tensor)doc",
+
+        // Add pybind overloads for the C++ APIs that should be exposed to python
+        // There should be no logic here, just a call to `self` with the correct arguments
+        ttnn::pybind_overload_t{
+            [](const decltype(ttnn::composite_example)& self, const ttnn::Tensor& input_tensor) -> ttnn::Tensor {
+                return self(input_tensor);
+            },
+            py::arg("input_tensor")});
+}
+*/

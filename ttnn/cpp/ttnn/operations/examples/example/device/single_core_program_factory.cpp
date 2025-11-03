@@ -36,39 +36,48 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     constexpr CoreCoord core = {0, 0};
 
     // we are sure to use the uint8_t now so,
-/*
-    tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.dtype());
-    uint32_t single_tile_size = tt::tile_size(cb_data_format);
+
+    tt::DataFormat cb_data_format_colIdx = tt::tt_metal::datatype_to_dataformat_converter(ColIdx_tensor.dtype());
+    uint32_t tile_size_bytes_colIdx = tt::tile_size(cb_data_format_colIdx);
+    
+    tt::DataFormat cb_data_format_codebook = tt::tt_metal::datatype_to_dataformat_converter(CodeBook_tensor.dtype());
+    uint32_t tile_size_bytes_codebook = tt::tile_size(cb_data_format_codebook);
+    
+    tt::DataFormat cb_data_format_rowIdx = tt::tt_metal::datatype_to_dataformat_converter(RowIdx_tensor.dtype());
+    uint32_t tile_size_bytes_rowIdx = tt::tile_size(cb_data_format_rowIdx);
+    
     tt::DataFormat cb_data_format_output = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.dtype());
-    uint32_t single_tile_size_output = tt::tile_size(cb_data_format_output);
-*/
+    uint32_t tile_size_bytes_output = tt::tile_size(cb_data_format_output);
+
 
     // TODO: pass it through the method once 
     // we have a send to end model setup.
     // constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
 
     // constexpr uint32_t n_tiles_codebook = 1; //unused
-    constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
-    constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-    constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-    constexpr uint32_t elements_per_tile_codebook = 64;
 
-    constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
-    constexpr uint32_t tile_size_bytes_codebook = sizeof(uint8_t) * elements_per_tile_codebook;
-    constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
+    // constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
+    constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_HW;
+    constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_HW;
+    // constexpr uint32_t elements_per_tile_codebook = 64;
+    // constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
+    // constexpr uint32_t tile_size_bytes_codebook = sizeof(uint8_t) * elements_per_tile_codebook;
+    // constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
+
+    uint32_t n_tiles_colIdx = ColIdx_tensor.physical_volume() / tt::constants::TILE_HW;
+    uint32_t n_tiles_rowIdx = RowIdx_tensor.physical_volume() / tt::constants::TILE_HW;
+    // uint32_t n_tiles_codebook = CodeBook_tensor.physical_volume() / tt::constants::TILE_HW;
+
+    // CoreCoord compute_with_storage_grid_size = {1, 1};
+    // uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    // auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+    //     tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
+    
+    // auto core_grid = device->compute_with_storage_grid_size();
+    // auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+    //     tt::tt_metal::split_work_to_cores(core_grid, n_tiles_colIdx);
 
 
-
-
-    // uint32_t num_tiles = input_tensor.physical_volume() / tt::constants::TILE_HW;
-
-    // We are targetting a single core only.
-/*
-    CoreCoord compute_with_storage_grid_size = {1, 1};
-    uint32_t num_cores_y = compute_with_storage_grid_size.y;
-    auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
-        tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
-*/
 
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_colIdx{
         .page_size = tile_size_bytes_colIdx, //The page size of the buffer in bytes. Unlike the `loopback` example, we
@@ -79,6 +88,9 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         .buffer_type = BufferType::DRAM};
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_codebook{
         .page_size = tile_size_bytes_codebook,
+        .buffer_type = BufferType::DRAM};
+    tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_output{
+        .page_size = tile_size_bytes_output,
         .buffer_type = BufferType::DRAM};
 
     //Unused
@@ -91,6 +103,9 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     // };
     // tt::tt_metal::distributed::ReplicatedBufferConfig buffer_config_codebook{
     //     .size = n_tiles_codebook * tile_size_bytes_codebook // Total bytes per device (replicated across the mesh).
+    // };
+    // tt::tt_metal::distributed::ReplicatedBufferConfig buffer_config_output{
+    //     .size = n_tiles_colIdx * tile_size_bytes_output // Total bytes per device (replicated across the mesh).
     // };
 
 
@@ -122,7 +137,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
     tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
         /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,                    // The total size of the circular buffer in bytes
-        /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::UInt8}})// The circular buffer index and data format it'll hold
+        /*data_format_spec=*/{{colIdx_cb_index, cb_data_format_colIdx}})// The circular buffer index and data format it'll hold
         .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));                  // Since we will be sending one tile at a time, we set
                                                                           // the page size to the tile size (and thus
                                                                           // total_size / page_size = tiles_per is the number of
@@ -130,39 +145,43 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
     tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
         /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
-        /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::UInt8}})
+        /*data_format_spec=*/{{rowIdx_cb_index, cb_data_format_rowIdx}})
         .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
 
     tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
     tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
         /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
-        /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::UInt8}})
+        /*data_format_spec=*/{{codeBook_cb_index, cb_data_format_codebook}})
         .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
     tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
-        /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,
-        /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::UInt8}})
-        .set_page_size(dst_cb_index, tile_size_bytes_colIdx));
+        /*total_size=*/tiles_per_cb * tile_size_bytes_output,
+        /*data_format_spec=*/{{dst_cb_index, cb_data_format_output}})
+        .set_page_size(dst_cb_index, tile_size_bytes_output));
 
 
     std::vector<uint32_t> reader_compile_time_args;
     tt::tt_metal::TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+    
     auto reader = CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/read_tiles.cpp",
         core,
         tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_compile_time_args});
+        //tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
+
     std::vector<uint32_t> writer_compile_time_args;
-    
     TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
+
     auto writer = tt::tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/write_tile.cpp",
         core,
         tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = writer_compile_time_args});
+    
     auto compute = tt::tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/compute/tiles_add.cpp",
@@ -171,11 +190,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
                                                             // that trade off performance for accuracy. HiFi4 is the most accurate
                                                             // mode. The other modes are HiFi3, HiFi2, HiFi1 and LoFi. The
                                                             // difference between them is the number of bits used during computation.
-
-
-
 /*
-
     std::vector<uint32_t> reader_compile_time_args;
     tt::tt_metal::TensorAccessorArgs(*src_buffer).append_to(reader_compile_time_args);
     std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)output_cb_index};

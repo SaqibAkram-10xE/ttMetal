@@ -5,7 +5,7 @@
 #include "example_device_operation.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/tensor_accessor_args.hpp>
-/*
+
 namespace ttnn::operations::examples {
 ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::MultiCore::create(
     const operation_attributes_t& operation_attributes,
@@ -14,7 +14,7 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
     using namespace tt;
     using namespace tt::tt_metal;
 
-    const auto& input_tensor = tensor_args.input_tensor;
+    const auto& input_tensor = tensor_args.ColIdx_tensor;
     auto& output_tensor = tensor_return_value;
 
     auto src_buffer = input_tensor.buffer();
@@ -56,13 +56,13 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
     std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)output_cb_index};
     tt::tt_metal::TensorAccessorArgs(*dst_buffer).append_to(writer_compile_time_args);
 
-    tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
+    tt::tt_metal::KernelHandle reader = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
-    tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
+    tt::tt_metal::KernelHandle writer = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id.cpp",
         all_cores,
@@ -111,17 +111,17 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
         }
 
         tt::tt_metal::SetRuntimeArgs(
-            program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
+            program, reader, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
 
         tt::tt_metal::SetRuntimeArgs(
-            program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
+            program, writer, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
         num_tiles_written += num_tiles_per_core;
     }
 
     return {
         std::move(program),
-        {.unary_reader_kernel_id = unary_reader_kernel_id,
-         .unary_writer_kernel_id = unary_writer_kernel_id,
+        {.reader = reader,
+         .writer = writer,
          .num_cores = num_cores,
          .num_cores_y = num_cores_y}};
 }
@@ -132,12 +132,12 @@ void ExampleDeviceOperation::MultiCore::override_runtime_arguments(
     const tensor_args_t& tensor_args,
     tensor_return_value_t& tensor_return_value) {
     auto& program = cached_program.program;
-    auto& unary_reader_kernel_id = cached_program.shared_variables.unary_reader_kernel_id;
-    auto& unary_writer_kernel_id = cached_program.shared_variables.unary_writer_kernel_id;
+    auto& reader = cached_program.shared_variables.reader;
+    auto& writer = cached_program.shared_variables.writer;
     auto& num_cores = cached_program.shared_variables.num_cores;
     auto& num_cores_y = cached_program.shared_variables.num_cores_y;
 
-    const auto& input_tensor = tensor_args.input_tensor;
+    const auto& input_tensor = tensor_args.ColIdx_tensor;
     auto& output_tensor = tensor_return_value;
 
     auto src_buffer = input_tensor.buffer();
@@ -147,16 +147,15 @@ void ExampleDeviceOperation::MultiCore::override_runtime_arguments(
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
 
         {
-            auto& runtime_args = GetRuntimeArgs(program, unary_reader_kernel_id, core);
+            auto& runtime_args = GetRuntimeArgs(program, reader, core);
             runtime_args[0] = src_buffer->address();
         }
 
         {
-            auto& runtime_args = GetRuntimeArgs(program, unary_writer_kernel_id, core);
+            auto& runtime_args = GetRuntimeArgs(program, writer, core);
             runtime_args[0] = dst_buffer->address();
         }
     }
 }
 
 }  // namespace ttnn::operations::examples
-*/

@@ -135,8 +135,6 @@ struct ExampleDeviceOperation {
     static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& RowIdx_tensor,
                                                                 const Tensor& CodeBook_tensor,
                                                                 const Tensor& ColIdx_tensor);
-    // static std::tuple<operation_attributes_t, tensor_args_t> invoke(const Tensor& input_tensor);s
-
     // Optional methods
 
     // In case the operation need a custom hash function, the following method can be implemented
