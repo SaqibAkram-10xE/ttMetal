@@ -42,9 +42,9 @@ int main(int argc, char** argv) {
         Program program = CreateProgram();
         constexpr CoreCoord core = {0, 0};
 
-        constexpr uint32_t n_tiles_colIdx = 4;   // 16 or 64
+        constexpr uint32_t n_tiles_colIdx = 4096;   // 16 or 64
         constexpr uint32_t n_tiles_codebook = 1;
-        constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
+        constexpr uint32_t n_tiles_rowIdx = 256;    // 1 or 16
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_codebook = 64;
@@ -53,11 +53,11 @@ int main(int argc, char** argv) {
         constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
         constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
         constexpr uint32_t tile_size_bytes_output = sizeof(bfloat16) * elements_per_tile_colIdx;
-
+        
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
             .page_size = tile_size_bytes_colIdx,
             .buffer_type = BufferType::DRAM};
-        distributed::DeviceLocalBufferConfig dram_config_rowIdx{
+            distributed::DeviceLocalBufferConfig dram_config_rowIdx{
             .page_size = tile_size_bytes_rowIdx, 
             .buffer_type = BufferType::DRAM};
         distributed::DeviceLocalBufferConfig dram_config_codebook{
@@ -67,7 +67,6 @@ int main(int argc, char** argv) {
             .page_size = tile_size_bytes_output,
             .buffer_type = BufferType::DRAM};
         
-
         //setting to the largest one
         distributed::ReplicatedBufferConfig buffer_config{
             .size = n_tiles_colIdx * tile_size_bytes_colIdx // Total bytes per device (replicated across the mesh).
@@ -108,7 +107,7 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
         for (auto& val : colIdx_data)
             val = static_cast<uint8_t>(dist_col(rng));
-        
+
         std::vector<bfloat16> codeBook_data(n_tiles_codebook * elements_per_tile_codebook);
         for (size_t i = 0; i < codeBook_data.size(); ++i)
             codeBook_data[i] = static_cast<float>(i % 64);
@@ -132,12 +131,12 @@ int main(int argc, char** argv) {
         fmt::print("\n");
 
         fmt::print("colIdx first 16: ");
-        for (int i = 0; i < 16 && i < (int)colIdx_data.size(); ++i)
-            fmt::print("{} ", colIdx_data[i]);
+        for (int i = 0; i < 0+16 && i < (int)colIdx_data.size(); ++i)
+            fmt::print("{}:{} ",i , (colIdx_data[i]));
         fmt::print("\n");
 
         fmt::print("rowIdx first 16: ");
-        for (int i = 0; i < 16 && i < (int)rowIdx_data.size(); ++i)
+        for (int i = 0; i < 0+16 && i < (int)rowIdx_data.size(); ++i)
             fmt::print("{}:{} ",i , rowIdx_data[i]);
         fmt::print("\n");
 
@@ -213,7 +212,7 @@ int main(int argc, char** argv) {
         std::vector<bfloat16> result_vec;
         distributed::EnqueueReadMeshBuffer(cq, result_vec, dst_dram_buffer, true);
 
-        fmt::print("\n\nresult_vec : ");
+        fmt::print("\nresult_vec : ");
         for (int i = 0; i < 40 && i < (int)result_vec.size(); ++i)
             fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
@@ -227,19 +226,17 @@ int main(int argc, char** argv) {
             fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
 
-        constexpr float eps = 1e-2f; // loose tolerance because of the nature of bfloat16
-        fmt::print("result_vec.size() : {}\n",result_vec.size());
-        fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
+        constexpr float eps = 1e-2f;
+        // fmt::print("result_vec.size() : {}\n",result_vec.size());
+        // fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
         
         static int count = 0;
-        static int count1 = 0;
-
+        
         for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
             int rowidx = (int)(rowIdx_data[(int)( idx_b / 16) ]);
             int colidx = (int)(colIdx_data[idx_b]);
             int codebook_index = (int)(colidx + (rowidx * 16.0f));
 
-            // cout << " idx_b / 16 ="<< idx_b / 16 << " idxbCount=" << idxbCount << " sizeof(row_indices) "<< row_indices.size() << "\n";
             if(codebook_index >= codeBook_data.size()) {
                 fmt::print(stderr, "codebook_index out of bounds\n");
                 fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
@@ -248,7 +245,6 @@ int main(int argc, char** argv) {
                 const bfloat16 result = (bfloat16)(result_vec[idx_b]);
                 if (std::abs(expected - result) > eps) {
                     pass = false;
-                    // fmt::print(stderr, "colIdx_data {}, rowIdx_data {}\n", static_cast<float>(colIdx_data[idx_b]), static_cast<float>(rowIdx_data[idx_b / 16]));
                     if (count < 20)
                     {
                         fmt::print(stderr,
@@ -258,19 +254,7 @@ int main(int argc, char** argv) {
                                     static_cast<float>(result)
                                 );
                         fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
-                        // for(int j = codebook_index-1 ; j < codebook_index+1; j++) {
-                        //     fmt::print(stderr, "codeBook_data[{}] = {}\n", j, int(codeBook_data[j]));
-                        // }
                         count++;
-                    }
-                    
-                    // fmt::print(".");
-                }else{
-                    if (count1 < 64){
-                        // fmt::print(stderr, "Correct Result index {}:\t expected {}, got {}\n", idx_b, expected, actual);
-                        // fmt::print(".");
-
-                        count1++;
                     }
                 }
             }
