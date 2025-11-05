@@ -82,15 +82,19 @@ colIdx_torch = torch.tensor(colIdx_np, dtype=torch.float32)
 rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROw, device=device)
 codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
 colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.TILE_LAYOUT, device=device)
+print("Tensors moved to device.")
+print("rowIdx_tt:", rowIdx_tt)  
+print("codeBook_tt:", codeBook_tt)
+print("colIdx_tt:", colIdx_tt)
 
 # --- Run your example op ---
-output_tensor = ttnn.prim.example(rowIdx_tt, rowIdx_tt, rowIdx_tt)
+# output_tensor = ttnn.prim.example(rowIdx_tt, rowIdx_tt, rowIdx_tt)
 
 # --- Copy back to host ---
-torch_output = ttnn.to_torch(output_tensor)
+# torch_output = ttnn.to_torch(output_tensor)
 
 print("Output tensor:")
-print(torch_output)
+# print(torch_output)
 
 # --- Cleanup ---
 ttnn.close_device(device)
