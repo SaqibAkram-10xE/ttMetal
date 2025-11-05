@@ -51,7 +51,15 @@ import numpy as np
 
 # --- Setup device ---
 device_id = 0
-device = ttnn.open_device(device_id=device_id)
+device = None
+try:
+    device = ttnn.open_device(device_id=device_id)
+except Exception as e:
+    print(f"Failed to open device {device_id}: {e}")
+    device = None
+if device is None:
+    raise RuntimeError(f"Could not open device {device_id}")
+print(f"Device {device_id} opened successfully.")
 
 # --- Define shapes and datatypes ---
 # Example: assume 1 tile = 32 elements for simplicity; use your real shape/tile size
@@ -97,5 +105,5 @@ print("Output tensor:")
 # print(torch_output)
 
 # --- Cleanup ---
-ttnn.close_device(device)
-
+finally:
+    if device: ttnn.close_device(device)

@@ -28,6 +28,10 @@ void kernel_main() {
     const uint32_t tile_size_bytes_rowIdx = get_tile_size(cb_rowIdx);  // 1024*1 = 1024 //typically 2048
     // const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // 1024*1 = 1024 //typically 2048
     
+    DPRINT << "READER: Tile size colIdx: " << tile_size_bytes << ENDL();
+    DPRINT << "READER: Tile size rowIdx: " << tile_size_bytes_rowIdx << ENDL();
+    DPRINT << "READER: Tile size codeBook: " << tile_size_bytes_codebook << ENDL();
+    
     const uint8_t* ptr16;
     uint32_t current_row_tile_id = 0;
 

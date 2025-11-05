@@ -7,7 +7,7 @@
 #include <tt-metalium/tensor_accessor_args.hpp>
 
 constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
-
+uint32_t tile_size_bytes_codebook = 64; //
 
 namespace ttnn::operations::examples {
 ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::SingleCore::create(
@@ -41,7 +41,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     uint32_t tile_size_bytes_colIdx = tt::tile_size(cb_data_format_colIdx);
     
     tt::DataFormat cb_data_format_codebook = tt::tt_metal::datatype_to_dataformat_converter(CodeBook_tensor.dtype());
-    uint32_t tile_size_bytes_codebook = tt::tile_size(cb_data_format_codebook);
+    tile_size_bytes_codebook = tt::tile_size(cb_data_format_codebook);
     
     tt::DataFormat cb_data_format_rowIdx = tt::tt_metal::datatype_to_dataformat_converter(RowIdx_tensor.dtype());
     uint32_t tile_size_bytes_rowIdx = tt::tile_size(cb_data_format_rowIdx);
@@ -243,7 +243,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     SetRuntimeArgs(program, reader, core, {colIdx_dram_buffer->address(),
                                              rowIdx_dram_buffer->address(),
                                               codeBook_dram_buffer->address(), 
-                                              n_tiles_colIdx});
+                                              n_tiles_colIdx, tile_size_bytes_codebook});
     SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
     SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
                                             n_tiles_rowIdx, elements_per_tile_rowIdx});
