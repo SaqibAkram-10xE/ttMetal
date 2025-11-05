@@ -17,24 +17,16 @@ void kernel_main() {
     uint32_t colIdx_addr = get_arg_val<uint32_t>(0);
     uint32_t rowIdx_addr = get_arg_val<uint32_t>(1);
     uint32_t codeBook_addr = get_arg_val<uint32_t>(2);
-    uint32_t scale_addr = get_arg_val<uint32_t>(3);
-    uint32_t n_tiles_colIdx = get_arg_val<uint32_t>(4);
-    uint32_t tile_size_bytes_codebook = get_arg_val<uint32_t>(5);
-    
+    uint32_t n_tiles_colIdx = get_arg_val<uint32_t>(3);
+    uint32_t tile_size_bytes_codebook = get_arg_val<uint32_t>(4);
+
     constexpr uint32_t cb_colIdx = tt::CBIndex::c_0;
     constexpr uint32_t cb_rowIdx = tt::CBIndex::c_1;
     constexpr uint32_t cb_codeBook = tt::CBIndex::c_2;
-    constexpr uint32_t cb_scale = tt::CBIndex::c_3;
     
     const uint32_t tile_size_bytes = get_tile_size(cb_colIdx);  // 1024*1 = 1024 // typically 2048
     const uint32_t tile_size_bytes_rowIdx = get_tile_size(cb_rowIdx);  // 1024*1 = 1024 //typically 2048
     // const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // 1024*1 = 1024 //typically 2048
-    uint32_t tile_size_bytes_scale = tile_size_bytes_rowIdx;
-    
-    DPRINT << "tile_size_bytes_codebook: " << tile_size_bytes_codebook << ENDL();
-    DPRINT << "tile_size_bytes_scale: " << tile_size_bytes_scale << ENDL();
-    DPRINT << "tile_size_bytes_rowIdx: " << tile_size_bytes_rowIdx << ENDL();
-    DPRINT << "tile_size_bytes: " << tile_size_bytes << ENDL();
     
     const uint8_t* ptr16;
     uint32_t current_row_tile_id = 0;
@@ -45,8 +37,6 @@ void kernel_main() {
     const auto rowIdx = TensorAccessor(rowIdx_args, rowIdx_addr, tile_size_bytes_rowIdx);
     constexpr auto codeBook_args = TensorAccessorArgs<rowIdx_args.next_compile_time_args_offset()>();
     const auto codeBook = TensorAccessor(codeBook_args, codeBook_addr, tile_size_bytes_codebook);
-    constexpr auto scale_args = TensorAccessorArgs<codeBook_args.next_compile_time_args_offset()>();
-    const auto scale = TensorAccessor(scale_args, scale_addr, tile_size_bytes_scale);
 
     cb_reserve_back(cb_codeBook, 1);
     uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
@@ -60,12 +50,6 @@ void kernel_main() {
     noc_async_read_barrier();
     cb_push_back(cb_rowIdx, 1);
     
-    cb_reserve_back(cb_scale, 1);
-    uint32_t cb_scale_addr = get_write_ptr(cb_scale);
-    noc_async_read_tile(current_row_tile_id, scale, cb_scale_addr); 
-    noc_async_read_barrier();
-    cb_push_back(cb_scale, 1);
-    
     for (uint32_t colIdx_tile_id = 0; 
                     colIdx_tile_id < n_tiles_colIdx;
                     colIdx_tile_id++) {
@@ -78,13 +62,6 @@ void kernel_main() {
             noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
             noc_async_read_barrier();
             cb_push_back(cb_rowIdx, 1);
-
-            cb_reserve_back(cb_scale, 1);
-            uint32_t cb_scale_addr = get_write_ptr(cb_scale);
-            noc_async_read_tile(current_row_tile_id, scale, cb_scale_addr); 
-            noc_async_read_barrier();
-            cb_push_back(cb_scale, 1);
-
         }
         cb_reserve_back(cb_colIdx, 1);
         uint32_t cb_colIdx_addr = get_write_ptr(cb_colIdx);

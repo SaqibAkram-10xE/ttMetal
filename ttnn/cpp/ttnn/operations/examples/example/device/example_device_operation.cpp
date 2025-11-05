@@ -40,10 +40,9 @@ ExampleDeviceOperation::tensor_return_value_t ExampleDeviceOperation::create_out
 std::tuple<ExampleDeviceOperation::operation_attributes_t, ExampleDeviceOperation::tensor_args_t>
 ExampleDeviceOperation::invoke(const Tensor& RowIdx_tensor,
                                const Tensor& CodeBook_tensor,
-                               const Tensor& ColIdx_tensor,
-                               const Tensor& Scales_tensor) {
+                               const Tensor& ColIdx_tensor) {
     return {operation_attributes_t{true, 42}, 
-            tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor, Scales_tensor}};
+            tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor}};
 }
 
 }  // namespace ttnn::operations::examples

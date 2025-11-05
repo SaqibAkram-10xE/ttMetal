@@ -15,8 +15,8 @@ struct CompositeExampleOperation {
     // The user will be able to call this method as `Tensor output = ttnn::composite_example(input_tensor)` after the op
     // is registered
     static Tensor invoke(const Tensor& input_tensor) {
-        auto copy = prim::example(input_tensor, input_tensor, input_tensor, input_tensor);
-        auto another_copy = prim::example(copy, copy, copy, copy);
+        auto copy = prim::example(input_tensor, input_tensor, input_tensor);
+        auto another_copy = prim::example(copy, copy, copy);
         return another_copy;
     }
 };
