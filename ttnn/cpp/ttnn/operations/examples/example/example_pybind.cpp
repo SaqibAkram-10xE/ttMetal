@@ -35,12 +35,14 @@ void bind_example_operation(py::module& module) {
             [](const decltype(ttnn::prim::example)& self,
                const ttnn::Tensor& RowIdx_tensor,
                const ttnn::Tensor& CodeBook_tensor,
-               const ttnn::Tensor& ColIdx_tensor) -> ttnn::Tensor {
-                return self(RowIdx_tensor, CodeBook_tensor, ColIdx_tensor);
+               const ttnn::Tensor& ColIdx_tensor,
+               const ttnn::Tensor& Scales_tensor) -> ttnn::Tensor {
+                return self(RowIdx_tensor, CodeBook_tensor, ColIdx_tensor, Scales_tensor);
             },
             ttnn::py::arg("RowIdx_tensor"),
             ttnn::py::arg("CodeBook_tensor"),
-            ttnn::py::arg("ColIdx_tensor")});
+            ttnn::py::arg("ColIdx_tensor"),
+            ttnn::py::arg("Scales_tensor")});
 
 
     bind_registered_operation(
