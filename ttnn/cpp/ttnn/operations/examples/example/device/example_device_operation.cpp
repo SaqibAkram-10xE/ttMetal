@@ -22,13 +22,15 @@ void ExampleDeviceOperation::validate_on_program_cache_hit(
     const operation_attributes_t& attributes, const tensor_args_t& tensor_args) {}
 
 ExampleDeviceOperation::spec_return_value_t ExampleDeviceOperation::compute_output_specs(
-    //My output would be same as ColIdx_tensor
-    const operation_attributes_t&, const tensor_args_t& tensor_args) {
+    // My output would be same as CodeBook_tensor
+    const operation_attributes_t&,
+    const tensor_args_t& tensor_args) {
+    const auto& CodeBook_tensor = tensor_args.CodeBook_tensor;
     const auto& ColIdx_tensor = tensor_args.ColIdx_tensor;
     return TensorSpec(
         ColIdx_tensor.logical_shape(),
         tt::tt_metal::TensorLayout(
-            ColIdx_tensor.dtype(), tt::tt_metal::PageConfig(ColIdx_tensor.layout()), MemoryConfig{}));
+            CodeBook_tensor.dtype(), tt::tt_metal::PageConfig(ColIdx_tensor.layout()), MemoryConfig{}));
 }
 
 ExampleDeviceOperation::tensor_return_value_t ExampleDeviceOperation::create_output_tensors(
@@ -41,8 +43,7 @@ std::tuple<ExampleDeviceOperation::operation_attributes_t, ExampleDeviceOperatio
 ExampleDeviceOperation::invoke(const Tensor& RowIdx_tensor,
                                const Tensor& CodeBook_tensor,
                                const Tensor& ColIdx_tensor) {
-    return {operation_attributes_t{true, 42}, 
-            tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor}};
+    return {operation_attributes_t{true, 42}, tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor}};
 }
 
 }  // namespace ttnn::operations::examples

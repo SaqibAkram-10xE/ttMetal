@@ -1,109 +1,126 @@
-# import torch
-# import ttnn
-
-# device_id = 0
-# device = ttnn.open_device(device_id=device_id)
-
-
-
-# import ttnn
-
-# # For the golden function, use the same signature as the operation
-# # Keep in mind that all `ttnn.Tensor`s are converted to `torch.Tensor`s
-# # And arguments not needed by torch can be ignored using `*args` and `**kwargs`
-# def golden_function(input_tensor: "torch.Tensor", *args, **kwargs):
-#     output_tensor:  "torch.Tensor" = ...
-#     return output_tensor
-
-# # TT-NN Tensors are converted to torch tensors before calling the golden function automatically
-# # And the outputs are converted back to TT-NN Tensors
-# # But in some cases you may need to preprocess the inputs and postprocess the outputs manually
-
-# # In order to preprocess the inputs manually, use the following signature
-# # Note that the arguments are not packed into *args and **kwargs as in the golden function!!!
-# def preprocess_golden_function_inputs(args, kwargs):
-#     # i.e.
-#     ttnn_input_tensor = args[0]
-#     return ttnn.to_torch(ttnn_input_tensor)
-
-# # In order to postprocess the outputs manually, use the following signature
-# # Note that the arguments are not packed into *args and **kwargs as in the golden function!!!
-# def postprocess_golden_function_outputs(args, kwargs, output):
-#     # i.e.
-#     ttnn_input_tensor = args[0]
-#     torch_output_tensor = outputs[0]
-#     return ttnn.from_torch(torch_output_tensor, dtype=ttnn_input_tensor.dtype, device=ttnn_input_tensor.device)
-
-# ttnn.attach_golden_function(
-#     ttnn.prim.example,
-#     golden_function=golden_function,
-#     preprocess_golden_function_inputs=preprocess_golden_function_inputs, # Optional
-#     postprocess_golden_function_outputs=postprocess_golden_function_outputs # Optional
-# )
-
-
-# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
-# SPDX-License-Identifier: Apache-2.0
-
 import torch
 import ttnn
 import numpy as np
 
-# --- Setup device ---
+# ----------------------------
+# Setup
+# ----------------------------
 device_id = 0
 device = None
+
 try:
     device = ttnn.open_device(device_id=device_id)
-except Exception as e:
-    print(f"Failed to open device {device_id}: {e}")
-    device = None
-if device is None:
-    raise RuntimeError(f"Could not open device {device_id}")
-print(f"Device {device_id} opened successfully.")
+    print(f"Device {device_id} opened successfully.\n")
 
-# --- Define shapes and datatypes ---
-# Example: assume 1 tile = 32 elements for simplicity; use your real shape/tile size
-num_row_tiles = 1
-num_col_tiles = 1
-num_codebook_tiles = 1
-elements_per_tile = 1024
-elements_per_tile_codebook = 256
+    # ----------------------------
+    # Parameters
+    # ----------------------------
+    n_tiles_colIdx = 16
+    n_tiles_rowIdx = 1
+    n_tiles_codebook = 1
+    elements_per_tile_colIdx = 1024
+    elements_per_tile_rowIdx = 1024
+    elements_per_tile_codebook = 64
 
-# --- Create random numpy arrays following your logic ---
-rng = np.random.default_rng()
+    # ----------------------------
+    # Random Input Generation
+    # ----------------------------
+    rng = np.random.default_rng()
 
-# colIdx in [0, 15]
-colIdx_np = rng.integers(low=0, high=16, size=(num_col_tiles, elements_per_tile), dtype=np.uint8)
+    # colIdx_np = rng.integers(0, 16, size=(n_tiles_colIdx * elements_per_tile_colIdx,), dtype=np.uint8)
+    colIdx_np = rng.integers(0, 16, size=(n_tiles_colIdx, elements_per_tile_colIdx), dtype=np.uint8)
 
-# rowIdx in [0, 3]
-rowIdx_np = rng.integers(low=0, high=4, size=(num_row_tiles, elements_per_tile), dtype=np.uint8)
+    rowIdx_np = rng.integers(0, 4, size=(n_tiles_rowIdx * elements_per_tile_rowIdx,), dtype=np.uint8)
+    codeBook_np = np.arange(0, n_tiles_codebook * elements_per_tile_codebook, dtype=np.float32) % 64
 
-codebook_np = np.arange(0, elements_per_tile_codebook * num_codebook_tiles, dtype=np.uint8)
-codebook_np = codebook_np.reshape(num_codebook_tiles, elements_per_tile_codebook)
+    print(f"colIdx_data size (bytes): {colIdx_np.size * colIdx_np.itemsize}")
+    print(f"rowIdx_data size (bytes): {rowIdx_np.size * rowIdx_np.itemsize}")
+    print(f"codeBook_data size (bytes): {codeBook_np.size * 2}  # bfloat16 size ~2 bytes")
 
-# --- Convert to torch tensors ---
-rowIdx_torch = torch.tensor(rowIdx_np, dtype=torch.float32)
-codeBook_torch = torch.tensor(codebook_np, dtype=torch.float32)
-colIdx_torch = torch.tensor(colIdx_np, dtype=torch.float32)
+    # print(f"colIdx first 16: {[int(v) for v in colIdx_np[:16]]}")
+    # print(f"colIdx 1024: 1024+16: {[int(v) for v in colIdx_np[1024:1024+16]]}")
+    print(f"rowIdx first 16: {[int(v) for v in rowIdx_np[:16]]}")
+    print(f"codeBook first 16: {[float(v) for v in codeBook_np[:16]]}\n")
 
-# --- Move to device ---
-rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROw, device=device)
-codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.TILE_LAYOUT, device=device)
-print("Tensors moved to device.")
-print("rowIdx_tt:", rowIdx_tt)  
-print("codeBook_tt:", codeBook_tt)
-print("colIdx_tt:", colIdx_tt)
+    # ----------------------------
+    # Convert to Torch tensors
+    # ----------------------------
+    colIdx_torch = torch.tensor(colIdx_np, dtype=torch.uint8)
+    rowIdx_torch = torch.tensor(rowIdx_np, dtype=torch.uint8)
+    codeBook_torch = torch.tensor(codeBook_np, dtype=torch.bfloat16)
 
-# --- Run your example op ---
-# output_tensor = ttnn.prim.example(rowIdx_tt, rowIdx_tt, rowIdx_tt)
+    # ----------------------------
+    # Move to TT-NN device
+    # ----------------------------
+    rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
+    colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
+    codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
 
-# --- Copy back to host ---
-# torch_output = ttnn.to_torch(output_tensor)
+    print("Tensors moved to TT-NN device.\n")
+    print("rowIdx_tt:", rowIdx_tt)
+    print("codeBook_tt:", codeBook_tt)
+    print("colIdx_tt:", colIdx_tt)
+    # ----------------------------
+    # Run the TT-NN op
+    # ----------------------------
+    output_tt = ttnn.prim.example(rowIdx_tt, codeBook_tt, colIdx_tt)
+    # output_tt = ttnn.to_dtype(output_tt, ttnn.float16)
+    print("\nOutput tensor on TT-NN device:")
+    print(output_tt)
+    # ----------------------------
+    # Copy back to host
+    # ----------------------------
+    torch_output = ttnn.to_torch(output_tt)
+    output_np = torch_output.cpu().to(torch.float32).numpy()
+    print("Output tensor:")
+    print(output_np)
+    # ----------------------------
+    # Validation (C++ equivalent)
+    # ----------------------------
+    eps = 1e-2
+    pass_test = True
+    count = 0
 
-print("Output tensor:")
-# print(torch_output)
+    # Flatten output tensor
+    output_flat = output_np.flatten()
+    colIdx_flat = colIdx_np.flatten()
 
-# --- Cleanup ---
+    print("Output colIdx_flat:", [float(v) for v in colIdx_flat[2048 : 2048 + 16]])
+    # print(colIdx_flat)
+    # num_rows, num_cols = colIdx_np.shape  # Get shape from colIdx
+
+    print("\nValidating results...\n\n")
+
+    count = 0
+    pass_test = True
+
+    for idx_b in range(len(output_flat)):
+        rowidx = int(rowIdx_np[idx_b // 16])
+        colidx = int(colIdx_flat[idx_b])
+        codebook_index = int(colidx + rowidx * 16)
+
+        if codebook_index >= len(codeBook_np):
+            print(f"[ERROR] codebook_index out of bounds: {codebook_index}")
+            continue
+
+        expected = float(codeBook_np[codebook_index])
+        result = float(output_flat[idx_b])
+
+        if abs(expected - result) > eps:
+            pass_test = False
+            if count < 5:
+                print(f"Mismatch at idx_b {idx_b}: expected {expected:.2f}, got {result:.2f}")
+                print(f"  rowidx={rowidx}, colidx={colidx}, codebook_index={codebook_index}")
+                count += 1
+
+    # Summary
+    if pass_test:
+        print("\nAll results matched expected output. TEST PASSED")
+    else:
+        print("\nSome mismatches found (see above). TEST FAILED")
+
+
 finally:
-    if device: ttnn.close_device(device)
+    if device:
+        ttnn.close_device(device)
+        print("\nDevice closed.")

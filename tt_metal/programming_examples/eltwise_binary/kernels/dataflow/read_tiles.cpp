@@ -23,16 +23,12 @@ void kernel_main() {
     constexpr uint32_t cb_colIdx = tt::CBIndex::c_0;
     constexpr uint32_t cb_rowIdx = tt::CBIndex::c_1;
     constexpr uint32_t cb_codeBook = tt::CBIndex::c_2;
-    
+
     const uint32_t tile_size_bytes = get_tile_size(cb_colIdx);  // 1024*1 = 1024 // typically 2048
     const uint32_t tile_size_bytes_rowIdx = get_tile_size(cb_rowIdx);  // 1024*1 = 1024 //typically 2048
     // const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // 1024*1 = 1024 //typically 2048
-    
-    DPRINT << "READER: Tile size colIdx: " << tile_size_bytes << ENDL();
-    DPRINT << "READER: Tile size rowIdx: " << tile_size_bytes_rowIdx << ENDL();
-    DPRINT << "READER: Tile size codeBook: " << tile_size_bytes_codebook << ENDL();
-    
-    const uint8_t* ptr16;
+    const uint16_t* ptr16;
+    const uint8_t* ptr8;
     uint32_t current_row_tile_id = 0;
 
     constexpr auto colIdx_args = TensorAccessorArgs<0>();
@@ -44,32 +40,42 @@ void kernel_main() {
 
     cb_reserve_back(cb_codeBook, 1);
     uint32_t cb_codeBook_addr = get_write_ptr(cb_codeBook);
-    noc_async_read_tile(0, codeBook, cb_codeBook_addr); 
+    noc_async_read_tile(0, codeBook, cb_codeBook_addr);
     noc_async_read_barrier();
     cb_push_back(cb_codeBook, 1);
-    
+
     cb_reserve_back(cb_rowIdx, 1);
     uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
+    noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr);
     noc_async_read_barrier();
     cb_push_back(cb_rowIdx, 1);
-    
-    for (uint32_t colIdx_tile_id = 0; 
-                    colIdx_tile_id < n_tiles_colIdx;
-                    colIdx_tile_id++) {
 
+    // DPRINT << "READER: Number of tiles to read: " << n_tiles_colIdx << ENDL();
+
+    for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         if(colIdx_tile_id / 16 != current_row_tile_id) {
             current_row_tile_id++;
             // DPRINT << "current_row_tile_id: " << current_row_tile_id << ENDL();
             cb_reserve_back(cb_rowIdx, 1);
             uint32_t cb_rowIdx_addr = get_write_ptr(cb_rowIdx);
-            noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr); 
+            noc_async_read_tile(current_row_tile_id, rowIdx, cb_rowIdx_addr);
             noc_async_read_barrier();
             cb_push_back(cb_rowIdx, 1);
         }
         cb_reserve_back(cb_colIdx, 1);
         uint32_t cb_colIdx_addr = get_write_ptr(cb_colIdx);
         noc_async_read_tile(colIdx_tile_id, colIdx, cb_colIdx_addr);
+
+        if (colIdx_tile_id <= 2) {
+            ptr8 = reinterpret_cast<const uint8_t*>(cb_colIdx_addr);
+            DPRINT << "READER: tile# " << colIdx_tile_id << ", cb_colIdx_addr 10 reader: ";
+            for (uint32_t j = 0; j < 20; j++) {
+                uint8_t val = (ptr8[j]);
+                DPRINT << static_cast<int>(val) << " ";
+            }
+            DPRINT << ENDL();
+        }
+
         noc_async_read_barrier();
         cb_push_back(cb_colIdx, 1);
     }

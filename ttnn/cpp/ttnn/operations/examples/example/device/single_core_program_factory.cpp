@@ -5,6 +5,7 @@
 #include "example_device_operation.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/tensor_accessor_args.hpp>
+#include <fmt/core.h>
 
 constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
 uint32_t tile_size_bytes_codebook = 64; //
@@ -30,6 +31,17 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     auto rowIdx_dram_buffer = RowIdx_tensor.buffer();
     auto dst_dram_buffer = output_tensor.buffer();
 
+    // fmt::print("ColIdx_tensor: ");
+    fmt::print("{}\n", ColIdx_tensor.tensor_spec());
+
+    // auto col_idx_vec = ColIdx_tensor.to_vector<uint8_t>();
+
+    // fmt::print("ColIdx_tensor values:\n");
+    // for (size_t i = 0; i < col_idx_vec.size(); ++i) {
+    //     fmt::print("{:4d} ", col_idx_vec[i]);
+    //     if ((i + 1) % 16 == 0) fmt::print("\n");
+    // }
+    // fmt::print("\n");
 
     tt::tt_metal::Program program{};
 
@@ -39,18 +51,23 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
 
     tt::DataFormat cb_data_format_colIdx = tt::tt_metal::datatype_to_dataformat_converter(ColIdx_tensor.dtype());
     uint32_t tile_size_bytes_colIdx = tt::tile_size(cb_data_format_colIdx);
-    
+
     tt::DataFormat cb_data_format_codebook = tt::tt_metal::datatype_to_dataformat_converter(CodeBook_tensor.dtype());
-    tile_size_bytes_codebook = tt::tile_size(cb_data_format_codebook);
-    
+    // tile_size_bytes_codebook = tt::tile_size(cb_data_format_codebook);
+    tile_size_bytes_codebook = tile_size_bytes_codebook * 2;  // bfloat16 uses 2 bytes
+
     tt::DataFormat cb_data_format_rowIdx = tt::tt_metal::datatype_to_dataformat_converter(RowIdx_tensor.dtype());
     uint32_t tile_size_bytes_rowIdx = tt::tile_size(cb_data_format_rowIdx);
-    
+
     tt::DataFormat cb_data_format_output = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.dtype());
     uint32_t tile_size_bytes_output = tt::tile_size(cb_data_format_output);
 
+    // fmt::print("tile_size_bytes_colIdx: {}\n", tile_size_bytes_colIdx);
+    // fmt::print("tile_size_bytes_codebook: {}\n", tile_size_bytes_codebook);
+    // fmt::print("tile_size_bytes_rowIdx: {}\n", tile_size_bytes_rowIdx);
+    // fmt::print("tile_size_bytes_output: {}\n", tile_size_bytes_output);
 
-    // TODO: pass it through the method once 
+    // TODO: pass it through the method once
     // we have a send to end model setup.
     // constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
 
@@ -72,7 +89,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     // uint32_t num_cores_y = compute_with_storage_grid_size.y;
     // auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
     //     tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
-    
+
     // auto core_grid = device->compute_with_storage_grid_size();
     // auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
     //     tt::tt_metal::split_work_to_cores(core_grid, n_tiles_colIdx);
@@ -84,8 +101,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
                                       // need the page size to be the same as the tile size for a large portion of the NoC transfer APIs to work.
         .buffer_type = BufferType::DRAM}; // This is a DRAM buffer.
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_rowIdx{
-        .page_size = tile_size_bytes_rowIdx, 
-        .buffer_type = BufferType::DRAM};
+        .page_size = tile_size_bytes_rowIdx, .buffer_type = BufferType::DRAM};
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_codebook{
         .page_size = tile_size_bytes_codebook,
         .buffer_type = BufferType::DRAM};
@@ -165,7 +181,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::tt_metal::TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
-    
+
     auto reader = CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/read_tiles.cpp",
@@ -181,7 +197,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/write_tile.cpp",
         core,
         tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = writer_compile_time_args});
-    
+
     auto compute = tt::tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/compute/tiles_add.cpp",
@@ -240,10 +256,15 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     }
 */
 
-    SetRuntimeArgs(program, reader, core, {colIdx_dram_buffer->address(),
-                                             rowIdx_dram_buffer->address(),
-                                              codeBook_dram_buffer->address(), 
-                                              n_tiles_colIdx, tile_size_bytes_codebook});
+    SetRuntimeArgs(
+        program,
+        reader,
+        core,
+        {colIdx_dram_buffer->address(),
+         rowIdx_dram_buffer->address(),
+         codeBook_dram_buffer->address(),
+         n_tiles_colIdx,
+         tile_size_bytes_codebook});
     SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
     SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
                                             n_tiles_rowIdx, elements_per_tile_rowIdx});
@@ -294,7 +315,7 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
     const auto& RowIdx_tensor = tensor_args.RowIdx_tensor;
     const auto& CodeBook_tensor = tensor_args.CodeBook_tensor;
     const auto& ColIdx_tensor = tensor_args.ColIdx_tensor;
-    
+
     // auto& output_tensor = tensor_return_value;
     auto& output_tensor = tensor_return_value;
 
@@ -311,6 +332,7 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
         runtime_args[1] = rowIdx_dram_buffer->address();
         runtime_args[2] = codeBook_dram_buffer->address();
         runtime_args[3] = n_tiles_colIdx;
+        runtime_args[4] = tile_size_bytes_codebook;
         // runtime_args[0] = src_buffer->address();
     }
 
