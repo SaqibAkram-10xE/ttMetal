@@ -66,15 +66,15 @@ void kernel_main() {
         uint32_t cb_colIdx_addr = get_write_ptr(cb_colIdx);
         noc_async_read_tile(colIdx_tile_id, colIdx, cb_colIdx_addr);
 
-        // if (colIdx_tile_id <= 2) {
-        //     ptr8 = reinterpret_cast<const uint8_t*>(cb_colIdx_addr);
-        //     // DPRINT << "READER: tile# " << colIdx_tile_id << ", cb_colIdx_addr 10 reader: ";
-        //     for (uint32_t j = 0; j < 20; j++) {
-        //         uint8_t val = (ptr8[j]);
-        //         DPRINT << static_cast<int>(val) << " ";
-        //     }
-        //     DPRINT << ENDL();
-        // }
+        if (colIdx_tile_id <= 2) {
+            ptr8 = reinterpret_cast<const uint8_t*>(cb_colIdx_addr);
+            // DPRINT << "READER: tile# " << colIdx_tile_id << ", cb_colIdx_addr 10 reader: ";
+            for (uint32_t j = 0; j < 20; j++) {
+                uint8_t val = (ptr8[j]);
+                DPRINT << static_cast<int>(val) << " ";
+            }
+            DPRINT << ENDL();
+        }
 
         noc_async_read_barrier();
         cb_push_back(cb_colIdx, 1);

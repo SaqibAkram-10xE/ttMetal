@@ -26,16 +26,16 @@ void kernel_main() {
     for (uint32_t i = 0; i < n_tiles_colIdx; i++) {
         cb_wait_front(cb_out0, 1);
         uint32_t cb_out0_addr = get_read_ptr(cb_out0);
-        // if (i <= 2) {
-        //     DPRINT << "WRITER: read_cb_addr=" << (int)cb_out0_addr << " tile_index=" << i << ENDL();
-        // //     const uint16_t* ptr16t = reinterpret_cast<const uint16_t*>(cb_out0_addr);
-        // //     DPRINT << "Writer KERNEL: tile# " << i << ", cb_out0_addr 10 writer: ";
-        // //     for (uint32_t j = 0; j < 5; j++) {
-        // //         float val = bfloat16_to_float(ptr16t[j]);
-        // //         DPRINT << val << " ";
-        // //     }
-        // //     DPRINT << ENDL();
-        // }
+        if (i <= 2) {
+            DPRINT << "WRITER: read_cb_addr=" << (int)cb_out0_addr << " tile_index=" << i << ENDL();
+            // //     const uint16_t* ptr16t = reinterpret_cast<const uint16_t*>(cb_out0_addr);
+            // //     DPRINT << "Writer KERNEL: tile# " << i << ", cb_out0_addr 10 writer: ";
+            // //     for (uint32_t j = 0; j < 5; j++) {
+            // //         float val = bfloat16_to_float(ptr16t[j]);
+            // //         DPRINT << val << " ";
+            // //     }
+            // //     DPRINT << ENDL();
+        }
         noc_async_write_tile(i, out0, cb_out0_addr);
         // noc_async_writes_flushed();
         noc_async_write_barrier();  // This will wait until the write is done. As an alternative,

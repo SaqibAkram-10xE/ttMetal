@@ -50,6 +50,10 @@ void MAIN {
     cb_get_tile(cb_rowIdx, 0 , &rowIdx_tile_ptr);
     rowIdx_tile_ptr = &rowIdx_tile_ptr[16];
 
+    // cb_reserve_back(cb_out0, 1);
+    cb_get_tile(cb_out0, 0, &out_tile_ptr);
+    out_tile_ptr += 8;
+
     for (uint32_t colIdx_tile_id = 0; colIdx_tile_id < n_tiles_colIdx; colIdx_tile_id++) {
         if(colIdx_tile_id >> 4 != current_row_tile_id) {
             cb_pop_front(cb_rowIdx, 1);
@@ -64,39 +68,38 @@ void MAIN {
         colIdx_tile_ptr = &colIdx_tile_ptr[16];
         // DPRINT << "COMPUTE: colIdx_tile_ptr=" << (int)colIdx_tile_ptr <<" tile_index=" << colIdx_tile_id << ENDL();
 
-        // tile_regs_acquire();
-        cb_reserve_back(cb_out0, 1); // seems not working
-        cb_get_tile(cb_out0, colIdx_tile_id, &out_tile_ptr);
-        out_tile_ptr += 8;
-
-        // Alternate ±2048 depending on tile id
-        // if (colIdx_tile_id > 0) {
-        //     int offset = (colIdx_tile_id % 2 == 1) ? -2048 : +2048;
-        //     out_tile_ptr += offset;
-        // }
         // #ifdef TRISC_MATH
+        // tile_regs_acquire();
+        cb_reserve_back(cb_out0, 1);  // seems not working
+        // cb_get_tile(cb_out0, 0, &out_tile_ptr);
+        // out_tile_ptr += 8;
+        if (colIdx_tile_id > 0) {
+            int offset = (colIdx_tile_id % 2 == 1) ? 1024 : -1024;
+            out_tile_ptr += offset;
+        }
         for(uint16_t idx_b = 0; idx_b < elements_per_tile_colIdx; idx_b++) {
             rowidx = (rowIdx_tile_ptr[idx_b >> 4]);
             colidx = (colIdx_tile_ptr[idx_b]);
             codebook_index = (colidx + (rowidx << 4));
+
             out_tile_ptr[idx_b] = (codeBook_tile_ptr[codebook_index]);
             // #ifdef TRISC_MATH
             // if ((idx_b == 0) && (colIdx_tile_id <= 2)) {
             //     DPRINT << "COMPUTE: out_cb_addr=" << (int)out_tile_ptr <<" tile_index=" << colIdx_tile_id << ENDL();
-            // DPRINT << "out[0]: " << bfloat16_to_float(out_tile_ptr[idx_b]) << ENDL();
-            // DPRINT << "colidx: " << (int)colidx << ENDL();
-            // DPRINT << "rowidx: " << (int)rowidx << ENDL();
-            // DPRINT << "codebook_index: " << (int)codebook_index << ENDL();
-            // DPRINT << "out[1]: " << (int)out_tile_ptr[idx_b+1] << ENDL();
+            // // DPRINT << "out[0]: " << bfloat16_to_float(out_tile_ptr[idx_b]) << ENDL();
+            // // DPRINT << "colidx: " << (int)colidx << ENDL();
+            // // DPRINT << "rowidx: " << (int)rowidx << ENDL();
+            // // DPRINT << "codebook_index: " << (int)codebook_index << ENDL();
+            // // DPRINT << "out[1]: " << (int)out_tile_ptr[idx_b+1] << ENDL();
             // }
             // #endif
         }
         // #endif
         rowIdx_tile_ptr = &rowIdx_tile_ptr[64];
-        // out_tile_ptr -= 2048; // bfloat16 uses 2 bytes
+        // Alternate ±2048 depending on tile id
 
-        cb_pop_front(cb_colIdx, 1);
         cb_push_back(cb_out0, 1);
+        cb_pop_front(cb_colIdx, 1);
 
         // tile_regs_commit();
         // tile_regs_wait();
@@ -105,6 +108,7 @@ void MAIN {
     }
     cb_pop_front(cb_rowIdx, 1);
     cb_pop_front(cb_codeBook, 1);
+    cb_push_back(cb_out0, 1);
 
 }  // namespace NAMESPACE
 
