@@ -34,6 +34,15 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     // fmt::print("ColIdx_tensor: ");
     fmt::print("{}\n", ColIdx_tensor.tensor_spec());
 
+    // const auto& logical_shape = ColIdx_tensor.logical_shape();
+    // std::size_t num_elements = 1;
+    // for (auto dim : logical_shape.value().shape) {
+    //     num_elements *= dim;
+    // }
+
+    // fmt::print("Logical shape: {}\n", logical_shape.value().shape);
+    // fmt::print("Total elements: {}\n", num_elements);
+
     // auto col_idx_vec = ColIdx_tensor.to_vector<uint8_t>();
 
     // fmt::print("ColIdx_tensor values:\n");

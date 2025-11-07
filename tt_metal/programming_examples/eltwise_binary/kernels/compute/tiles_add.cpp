@@ -62,13 +62,13 @@ void MAIN {
         cb_wait_front(cb_colIdx, 1);
         cb_get_tile(cb_colIdx, 0 , &colIdx_tile_ptr);
         colIdx_tile_ptr = &colIdx_tile_ptr[16];
+        // DPRINT << "COMPUTE: colIdx_tile_ptr=" << (int)colIdx_tile_ptr <<" tile_index=" << colIdx_tile_id << ENDL();
 
         // tile_regs_acquire();
-
         cb_reserve_back(cb_out0, 1); // seems not working
-        cb_get_tile(cb_out0, colIdx_tile_id , &out_tile_ptr);
-
+        cb_get_tile(cb_out0, colIdx_tile_id, &out_tile_ptr);
         out_tile_ptr += 8;
+
         // Alternate ±2048 depending on tile id
         // if (colIdx_tile_id > 0) {
         //     int offset = (colIdx_tile_id % 2 == 1) ? -2048 : +2048;
@@ -80,14 +80,16 @@ void MAIN {
             colidx = (colIdx_tile_ptr[idx_b]);
             codebook_index = (colidx + (rowidx << 4));
             out_tile_ptr[idx_b] = (codeBook_tile_ptr[codebook_index]);
-            if ((idx_b == 0) && (colIdx_tile_id <= 2)) {
-                DPRINT << "COMPUTE: out_cb_addr=" << (int)out_tile_ptr << ENDL();
-                DPRINT << "out[0]: " << bfloat16_to_float(out_tile_ptr[idx_b]) << ENDL();
-                DPRINT << "colidx: " << (int)colidx << ENDL();
-                DPRINT << "rowidx: " << (int)rowidx << ENDL();
-                DPRINT << "codebook_index: " << (int)codebook_index << ENDL();
-                // DPRINT << "out[1]: " << (int)out_tile_ptr[idx_b+1] << ENDL();
-            }
+            // #ifdef TRISC_MATH
+            // if ((idx_b == 0) && (colIdx_tile_id <= 2)) {
+            //     DPRINT << "COMPUTE: out_cb_addr=" << (int)out_tile_ptr <<" tile_index=" << colIdx_tile_id << ENDL();
+            // DPRINT << "out[0]: " << bfloat16_to_float(out_tile_ptr[idx_b]) << ENDL();
+            // DPRINT << "colidx: " << (int)colidx << ENDL();
+            // DPRINT << "rowidx: " << (int)rowidx << ENDL();
+            // DPRINT << "codebook_index: " << (int)codebook_index << ENDL();
+            // DPRINT << "out[1]: " << (int)out_tile_ptr[idx_b+1] << ENDL();
+            // }
+            // #endif
         }
         // #endif
         rowIdx_tile_ptr = &rowIdx_tile_ptr[64];

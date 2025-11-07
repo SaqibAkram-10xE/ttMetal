@@ -15,11 +15,11 @@ try:
     # ----------------------------
     # Parameters
     # ----------------------------
-    n_tiles_colIdx = 16
+    n_tiles_colIdx = 1
     n_tiles_rowIdx = 1
     n_tiles_codebook = 1
     elements_per_tile_colIdx = 1024
-    elements_per_tile_rowIdx = 1024
+    elements_per_tile_rowIdx = 64
     elements_per_tile_codebook = 64
 
     # ----------------------------

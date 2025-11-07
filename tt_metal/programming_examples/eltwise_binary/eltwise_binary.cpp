@@ -50,19 +50,19 @@ int main(int argc, char** argv) {
         distributed::MeshWorkload workload;
         auto device_range = distributed::MeshCoordinateRange(mesh_device->shape());
         Program program = CreateProgram();
-        
-        // constexpr CoreCoord core = {0, 0};
+
+        constexpr CoreCoord core = {0, 0};
 
         //------------------INPUT-------------------//
-        uint32_t inputColIdx_elements = 65535;
-        uint32_t inputCodeBook_elements = 64; //256
-        uint32_t inputRowIdx_elements = 64;
+        // uint32_t inputColIdx_elements = 65535;
+        // uint32_t inputCodeBook_elements = 64; //256
+        // uint32_t inputRowIdx_elements = 64;
 
         //------------------------------------------//
 
-        uint32_t n_tiles_colIdx = inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
-        uint32_t n_tiles_codebook = inputCodeBook_elements / tt::constants::TILE_HW;
-        uint32_t n_tiles_rowIdx = inputRowIdx_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_colIdx = 512;  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
+        uint32_t n_tiles_codebook = 1;  // inputCodeBook_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_rowIdx = 32;   // inputRowIdx_elements / tt::constants::TILE_HW;
 
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
@@ -73,33 +73,31 @@ int main(int argc, char** argv) {
         constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
         constexpr uint32_t tile_size_bytes_output = sizeof(bfloat16) * elements_per_tile_colIdx;
 
-        auto core_grid = mesh_device->compute_with_storage_grid_size();
-        auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
-            split_work_to_cores(core_grid, n_tiles_colIdx);
+        // auto core_grid = mesh_device->compute_with_storage_grid_size();
+        // auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
+        //     split_work_to_cores(core_grid, n_tiles_colIdx);
 
-        fmt::print("num_cores: {}\n", num_cores);
-        fmt::print("work_per_core1: {}\n", work_per_core1);
-        fmt::print("work_per_core2: {}\n", work_per_core2);
+        // fmt::print("num_cores: {}\n", num_cores);
+        // fmt::print("work_per_core1: {}\n", work_per_core1);
+        // fmt::print("work_per_core2: {}\n", work_per_core2);
 
-        fmt::print("all_cores (size={}):\n", all_cores.size());
-        fmt::print("all_cores: {}\n", all_cores);
-        fmt::print("core_group_1: {}\n", core_group_1);
-        fmt::print("core_group_2: {}\n", core_group_2);
-        
+        // fmt::print("all_cores (size={}):\n", all_cores.size());
+        // fmt::print("all_cores: {}\n", all_cores);
+        // fmt::print("core_group_1: {}\n", core_group_1);
+        // fmt::print("core_group_2: {}\n", core_group_2);
 
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
             .page_size = tile_size_bytes_colIdx,
             .buffer_type = BufferType::DRAM};
-            distributed::DeviceLocalBufferConfig dram_config_rowIdx{
-            .page_size = tile_size_bytes_rowIdx, 
-            .buffer_type = BufferType::DRAM};
+        distributed::DeviceLocalBufferConfig dram_config_rowIdx{
+            .page_size = tile_size_bytes_rowIdx, .buffer_type = BufferType::DRAM};
         distributed::DeviceLocalBufferConfig dram_config_codebook{
             .page_size = tile_size_bytes_codebook,
             .buffer_type = BufferType::DRAM};
         distributed::DeviceLocalBufferConfig dram_config_output{
             .page_size = tile_size_bytes_output,
             .buffer_type = BufferType::DRAM};
-        
+
         //setting to the largest one
         distributed::ReplicatedBufferConfig buffer_config{
             .size = n_tiles_colIdx * tile_size_bytes_colIdx // Total bytes per device (replicated across the mesh).
@@ -119,7 +117,7 @@ int main(int argc, char** argv) {
         auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config_rowIdx, dram_config_rowIdx, mesh_device.get());
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config_output, dram_config_output, mesh_device.get());
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
-        
+
         // Initialize vectors with fixed (non-random) values
 
         // std::vector<uint8_t> colIdx_data(elements_per_tile_colIdx * n_tiles_colIdx);
@@ -180,29 +178,41 @@ int main(int argc, char** argv) {
 
         uint32_t tiles_per_cb = 2;
         tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
-        CreateCircularBuffer(program, all_cores, CircularBufferConfig(
-            /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,
-            /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::UInt8}})
-            .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));
+        CreateCircularBuffer(
+            program,
+            core,
+            CircularBufferConfig(
+                /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,
+                /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::UInt8}})
+                .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));
 
         tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
-        CreateCircularBuffer(program, all_cores, CircularBufferConfig(
-            /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
-            /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::UInt8}})
-            .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
+        CreateCircularBuffer(
+            program,
+            core,
+            CircularBufferConfig(
+                /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
+                /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::UInt8}})
+                .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
 
         tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
-        CreateCircularBuffer(program, all_cores, CircularBufferConfig(
-            /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
-            /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16}})
-            .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
+        CreateCircularBuffer(
+            program,
+            core,
+            CircularBufferConfig(
+                /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
+                /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16}})
+                .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
-            tiles_per_cb = n_tiles_colIdx;
+        tiles_per_cb = n_tiles_colIdx;
         tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
-        CreateCircularBuffer(program, all_cores, CircularBufferConfig(
-            /*total_size=*/tiles_per_cb * tile_size_bytes_output,
-            /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::Float16}})
-            .set_page_size(dst_cb_index, tile_size_bytes_output));
+        CreateCircularBuffer(
+            program,
+            core,
+            CircularBufferConfig(
+                /*total_size=*/tiles_per_cb * tile_size_bytes_output,
+                /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::Float16}})
+                .set_page_size(dst_cb_index, tile_size_bytes_output));
 
         std::vector<uint32_t> reader_compile_time_args;
         TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
@@ -211,31 +221,43 @@ int main(int argc, char** argv) {
         auto reader = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/read_tiles.cpp",
-            all_cores,
-            DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_compile_time_args});
+            core,
+            DataMovementConfig{
+                .processor = DataMovementProcessor::RISCV_0,
+                .noc = NOC::RISCV_0_default,
+                .compile_args = reader_compile_time_args});
         std::vector<uint32_t> writer_compile_time_args;
-        
+
         TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
         auto writer = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/write_tile.cpp",
-            all_cores,
-            DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = writer_compile_time_args});
+            core,
+            DataMovementConfig{
+                .processor = DataMovementProcessor::RISCV_1,
+                .noc = NOC::RISCV_1_default,
+                .compile_args = writer_compile_time_args});
         auto compute = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/compute/tiles_add.cpp",
-            all_cores,
+            core,
             ComputeConfig{.math_fidelity = MathFidelity::HiFi4});
-        
 
-        SetRuntimeArgs(program, reader, all_cores, {colIdx_dram_buffer->address(),
-                                                 rowIdx_dram_buffer->address(),
-                                                  codeBook_dram_buffer->address(), 
-                                                  n_tiles_colIdx, tile_size_bytes_codebook});
-        SetRuntimeArgs(program, writer, all_cores, {dst_dram_buffer->address(), n_tiles_colIdx});
-        SetRuntimeArgs(program, compute, all_cores, {n_tiles_colIdx, elements_per_tile_colIdx,
-                                                n_tiles_rowIdx, elements_per_tile_rowIdx});
-
+        SetRuntimeArgs(
+            program,
+            reader,
+            core,
+            {colIdx_dram_buffer->address(),
+             rowIdx_dram_buffer->address(),
+             codeBook_dram_buffer->address(),
+             n_tiles_colIdx,
+             tile_size_bytes_codebook});
+        SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
+        SetRuntimeArgs(
+            program,
+            compute,
+            core,
+            {n_tiles_colIdx, elements_per_tile_colIdx, n_tiles_rowIdx, elements_per_tile_rowIdx});
 
         // // Iterate through each work group and assign work to cores
         // for (const auto& [ranges, work_per_core] : work_groups) {
@@ -299,9 +321,9 @@ int main(int argc, char** argv) {
         constexpr float eps = 1e-2f;
         // fmt::print("result_vec.size() : {}\n",result_vec.size());
         // fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
-        
+
         static int count = 0;
-        
+
         for(size_t idx_b = 0; idx_b < result_vec.size(); idx_b++) {
             int rowidx = (int)(rowIdx_data[(int)( idx_b / 16) ]);
             int colidx = (int)(colIdx_data[idx_b]);
