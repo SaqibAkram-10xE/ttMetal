@@ -71,7 +71,7 @@ struct ExampleDeviceOperation {
         // Shared variables are the variables that are shared between the create and override_runtime_arguments methods
         struct shared_variables_t {
             tt::tt_metal::KernelHandle reader;
-            tt::tt_metal::KernelHandle writer;
+            // tt::tt_metal::KernelHandle writer;
         };
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;
 
@@ -91,7 +91,7 @@ struct ExampleDeviceOperation {
         // Shared variables are the variables that are shared between the create and override_runtime_arguments methods
         struct shared_variables_t {
             tt::tt_metal::KernelHandle reader;
-            tt::tt_metal::KernelHandle writer;
+            // tt::tt_metal::KernelHandle writer;
             std::size_t num_cores;
             std::size_t num_cores_y;
         };

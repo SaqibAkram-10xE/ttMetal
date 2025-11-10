@@ -60,31 +60,31 @@ int main(int argc, char** argv) {
 
         //------------------------------------------//
 
-        uint32_t n_tiles_colIdx = 512;  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
+        uint32_t n_tiles_colIdx = 512;  // 4096;//512  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
         uint32_t n_tiles_codebook = 1;  // inputCodeBook_elements / tt::constants::TILE_HW;
-        uint32_t n_tiles_rowIdx = 32;   // inputRowIdx_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_rowIdx = 32;   // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
+        constexpr uint32_t elements_per_tile_codebook = 256;  // 64
 
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
-        constexpr uint32_t elements_per_tile_codebook = 64;
 
         constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
         constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
         constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
         constexpr uint32_t tile_size_bytes_output = sizeof(bfloat16) * elements_per_tile_colIdx;
 
-        // auto core_grid = mesh_device->compute_with_storage_grid_size();
-        // auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
-        //     split_work_to_cores(core_grid, n_tiles_colIdx);
+        auto core_grid = mesh_device->compute_with_storage_grid_size();
+        auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
+            split_work_to_cores(core_grid, n_tiles_colIdx);
 
-        // fmt::print("num_cores: {}\n", num_cores);
-        // fmt::print("work_per_core1: {}\n", work_per_core1);
-        // fmt::print("work_per_core2: {}\n", work_per_core2);
+        fmt::print("num_cores: {}\n", num_cores);
+        fmt::print("work_per_core1: {}\n", work_per_core1);
+        fmt::print("work_per_core2: {}\n", work_per_core2);
 
-        // fmt::print("all_cores (size={}):\n", all_cores.size());
-        // fmt::print("all_cores: {}\n", all_cores);
-        // fmt::print("core_group_1: {}\n", core_group_1);
-        // fmt::print("core_group_2: {}\n", core_group_2);
+        fmt::print("all_cores (size={}):\n", all_cores.size());
+        fmt::print("all_cores: {}\n", all_cores);
+        fmt::print("core_group_1: {}\n", core_group_1);
+        fmt::print("core_group_2: {}\n", core_group_2);
 
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
             .page_size = tile_size_bytes_colIdx,
@@ -218,31 +218,15 @@ int main(int argc, char** argv) {
         TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
         TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
         TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+        TensorAccessorArgs(*dst_dram_buffer).append_to(reader_compile_time_args);
         auto reader = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/read_tiles.cpp",
             core,
             DataMovementConfig{
-                .processor = DataMovementProcessor::RISCV_0,
-                .noc = NOC::RISCV_0_default,
-                .compile_args = reader_compile_time_args});
-        std::vector<uint32_t> writer_compile_time_args;
-
-        TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
-        auto writer = CreateKernel(
-            program,
-            OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/write_tile.cpp",
-            core,
-            DataMovementConfig{
                 .processor = DataMovementProcessor::RISCV_1,
                 .noc = NOC::RISCV_1_default,
-                .compile_args = writer_compile_time_args});
-        auto compute = CreateKernel(
-            program,
-            OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/compute/tiles_add.cpp",
-            core,
-            ComputeConfig{.math_fidelity = MathFidelity::HiFi4});
-
+                .compile_args = reader_compile_time_args});
         SetRuntimeArgs(
             program,
             reader,
@@ -250,16 +234,19 @@ int main(int argc, char** argv) {
             {colIdx_dram_buffer->address(),
              rowIdx_dram_buffer->address(),
              codeBook_dram_buffer->address(),
+             dst_dram_buffer->address(),
              n_tiles_colIdx,
-             tile_size_bytes_codebook});
-        SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
-        SetRuntimeArgs(
-            program,
-            compute,
-            core,
-            {n_tiles_colIdx, elements_per_tile_colIdx, n_tiles_rowIdx, elements_per_tile_rowIdx});
+             tile_size_bytes_codebook,
+             0});  // start_tile_id = 0
 
-        // // Iterate through each work group and assign work to cores
+        // SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
+        // SetRuntimeArgs(
+        //     program,
+        //     compute,
+        //     core,
+        //     {n_tiles_colIdx, elements_per_tile_colIdx, n_tiles_rowIdx, elements_per_tile_rowIdx});
+
+        // Iterate through each work group and assign work to cores
         // for (const auto& [ranges, work_per_core] : work_groups) {
         //     for (const auto& range : ranges.ranges()) {
         //         for (const auto& core : range) {
@@ -337,8 +324,7 @@ int main(int argc, char** argv) {
                 const bfloat16 result = (bfloat16)(result_vec[idx_b]);
                 if (std::abs(expected - result) > eps) {
                     pass = false;
-                    if (count < 20)
-                    {
+                    if (count < 5) {
                         fmt::print(stderr,
                                     "Result mismatch at index {}: expected {:.2f}, got {:.2f}\n",
                                     idx_b,

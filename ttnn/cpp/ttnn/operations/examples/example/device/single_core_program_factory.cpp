@@ -7,8 +7,8 @@
 #include <tt-metalium/tensor_accessor_args.hpp>
 #include <fmt/core.h>
 
-constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
-uint32_t tile_size_bytes_codebook = 64; //
+// constexpr uint32_t n_tiles_colIdx = 3;   // 16 or 64
+// uint32_t tile_size_bytes_codebook = 64; //
 
 namespace ttnn::operations::examples {
 ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::SingleCore::create(
@@ -32,7 +32,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     auto dst_dram_buffer = output_tensor.buffer();
 
     // fmt::print("ColIdx_tensor: ");
-    fmt::print("{}\n", ColIdx_tensor.tensor_spec());
+    // fmt::print("{}\n", ColIdx_tensor.tensor_spec());
 
     // const auto& logical_shape = ColIdx_tensor.logical_shape();
     // std::size_t num_elements = 1;
@@ -83,15 +83,15 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     // constexpr uint32_t n_tiles_codebook = 1; //unused
 
     // constexpr uint32_t n_tiles_rowIdx = 1;    // 1 or 16
-    constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_HW;
-    constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_HW;
+    // constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_HW;
+    // constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_HW;
     // constexpr uint32_t elements_per_tile_codebook = 64;
     // constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
     // constexpr uint32_t tile_size_bytes_codebook = sizeof(uint8_t) * elements_per_tile_codebook;
     // constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
 
-    uint32_t n_tiles_colIdx = ColIdx_tensor.physical_volume() / tt::constants::TILE_HW;
-    uint32_t n_tiles_rowIdx = RowIdx_tensor.physical_volume() / tt::constants::TILE_HW;
+    n_tiles_colIdx = ColIdx_tensor.physical_volume() / tt::constants::TILE_HW;
+    // uint32_t n_tiles_rowIdx = RowIdx_tensor.physical_volume() / tt::constants::TILE_HW;
     // uint32_t n_tiles_codebook = CodeBook_tensor.physical_volume() / tt::constants::TILE_HW;
 
     // CoreCoord compute_with_storage_grid_size = {1, 1};
@@ -190,80 +190,89 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::tt_metal::TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+    tt::tt_metal::TensorAccessorArgs(*dst_dram_buffer).append_to(reader_compile_time_args);
 
     auto reader = CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/read_tiles.cpp",
         core,
-        tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_compile_time_args});
-        //tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
+        tt::tt_metal::DataMovementConfig{
+            .processor = DataMovementProcessor::RISCV_1,
+            .noc = NOC::RISCV_1_default,
+            .compile_args = reader_compile_time_args});
+    // tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
-    std::vector<uint32_t> writer_compile_time_args;
-    TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
+    // std::vector<uint32_t> writer_compile_time_args;
+    // TensorAccessorArgs(*dst_dram_buffer).append_to(writer_compile_time_args);
 
-    auto writer = tt::tt_metal::CreateKernel(
-        program,
-        "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/write_tile.cpp",
-        core,
-        tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = writer_compile_time_args});
+    // auto writer = tt::tt_metal::CreateKernel(
+    //     program,
+    //     "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/write_tile.cpp",
+    //     core,
+    //     tt::tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default,
+    //     .compile_args = writer_compile_time_args});
 
-    auto compute = tt::tt_metal::CreateKernel(
-        program,
-        "tt_metal/programming_examples/eltwise_binary/kernels/compute/tiles_add.cpp",
-        core,
-        tt::tt_metal::ComputeConfig{.math_fidelity = MathFidelity::HiFi4});   // There's different math fidelity modes (for the tensor engine)
-                                                            // that trade off performance for accuracy. HiFi4 is the most accurate
-                                                            // mode. The other modes are HiFi3, HiFi2, HiFi1 and LoFi. The
-                                                            // difference between them is the number of bits used during computation.
-/*
-    std::vector<uint32_t> reader_compile_time_args;
-    tt::tt_metal::TensorAccessorArgs(*src_buffer).append_to(reader_compile_time_args);
-    std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)output_cb_index};
-    tt::tt_metal::TensorAccessorArgs(*dst_buffer).append_to(writer_compile_time_args);
+    // auto compute = tt::tt_metal::CreateKernel(
+    //     program,
+    //     "tt_metal/programming_examples/eltwise_binary/kernels/compute/tiles_add.cpp",
+    //     core,
+    //     tt::tt_metal::ComputeConfig{.math_fidelity = MathFidelity::HiFi4});   // There's different math fidelity
+    //     modes (for the tensor engine)
+    //                                                         // that trade off performance for accuracy. HiFi4 is the
+    //                                                         most accurate
+    //                                                         // mode. The other modes are HiFi3, HiFi2, HiFi1 and
+    //                                                         LoFi. The
+    //                                                         // difference between them is the number of bits used
+    //                                                         during computation.
+    /*
+        std::vector<uint32_t> reader_compile_time_args;
+        tt::tt_metal::TensorAccessorArgs(*src_buffer).append_to(reader_compile_time_args);
+        std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t)output_cb_index};
+        tt::tt_metal::TensorAccessorArgs(*dst_buffer).append_to(writer_compile_time_args);
 
-    tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
-        all_cores,
-        tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
+        tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
+            all_cores,
+            tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
 
-    tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id.cpp",
-        all_cores,
-        tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
+        tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/writer_unary_interleaved_start_id.cpp",
+            all_cores,
+            tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
-    std::vector<uint32_t> compute_kernel_args_group_1 = {
-        num_tiles_per_core_group_1,  // per_core_block_cnt
-        1                            // per_core_block_size
-    };
-
-    bool math_approx_mode = false;
-    tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
-        core_group_1,
-        tt::tt_metal::ComputeConfig{
-            .math_fidelity = MathFidelity::HiFi4,
-            .math_approx_mode = math_approx_mode,
-            .compile_args = compute_kernel_args_group_1});
-
-    if (!core_group_2.ranges().empty()) {
-        std::vector<uint32_t> compute_kernel_args_group_2 = {
-            num_tiles_per_core_group_2,  // per_core_block_cnt
+        std::vector<uint32_t> compute_kernel_args_group_1 = {
+            num_tiles_per_core_group_1,  // per_core_block_cnt
             1                            // per_core_block_size
         };
 
+        bool math_approx_mode = false;
         tt::tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
-            core_group_2,
+            core_group_1,
             tt::tt_metal::ComputeConfig{
                 .math_fidelity = MathFidelity::HiFi4,
                 .math_approx_mode = math_approx_mode,
-                .compile_args = compute_kernel_args_group_2});
-    }
-*/
+                .compile_args = compute_kernel_args_group_1});
+
+        if (!core_group_2.ranges().empty()) {
+            std::vector<uint32_t> compute_kernel_args_group_2 = {
+                num_tiles_per_core_group_2,  // per_core_block_cnt
+                1                            // per_core_block_size
+            };
+
+            tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
+                core_group_2,
+                tt::tt_metal::ComputeConfig{
+                    .math_fidelity = MathFidelity::HiFi4,
+                    .math_approx_mode = math_approx_mode,
+                    .compile_args = compute_kernel_args_group_2});
+        }
+    */
 
     SetRuntimeArgs(
         program,
@@ -272,36 +281,36 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         {colIdx_dram_buffer->address(),
          rowIdx_dram_buffer->address(),
          codeBook_dram_buffer->address(),
+         dst_dram_buffer->address(),
          n_tiles_colIdx,
          tile_size_bytes_codebook});
-    SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
-    SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
-                                            n_tiles_rowIdx, elements_per_tile_rowIdx});
 
-/*
-    for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
-        CoreCoord core = {i / num_cores_y, i % num_cores_y};
-        uint32_t num_tiles_per_core = 0;
-        if (core_group_1.contains(core)) {
-            num_tiles_per_core = num_tiles_per_core_group_1;
-        } else if (core_group_2.contains(core)) {
-            num_tiles_per_core = num_tiles_per_core_group_2;
-        } else {
-            TT_ASSERT(false, "Core not in specified core ranges");
+    // SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
+    // SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
+    //                                         n_tiles_rowIdx, elements_per_tile_rowIdx});
+
+    /*
+        for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+            CoreCoord core = {i / num_cores_y, i % num_cores_y};
+            uint32_t num_tiles_per_core = 0;
+            if (core_group_1.contains(core)) {
+                num_tiles_per_core = num_tiles_per_core_group_1;
+            } else if (core_group_2.contains(core)) {
+                num_tiles_per_core = num_tiles_per_core_group_2;
+            } else {
+                TT_ASSERT(false, "Core not in specified core ranges");
+            }
+
+            tt::tt_metal::SetRuntimeArgs(
+                program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
+
+            tt::tt_metal::SetRuntimeArgs(
+                program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
+            num_tiles_written += num_tiles_per_core;
         }
+    */
 
-        tt::tt_metal::SetRuntimeArgs(
-            program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
-
-        tt::tt_metal::SetRuntimeArgs(
-            program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
-        num_tiles_written += num_tiles_per_core;
-    }
-*/
-
-    return {
-        std::move(program),
-        {.reader = reader, .writer = writer}};
+    return {std::move(program), {.reader = reader}};
 }
 
 
@@ -318,7 +327,7 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
 
     auto& program = cached_program.program;
     auto& reader = cached_program.shared_variables.reader;
-    auto& writer = cached_program.shared_variables.writer;
+    // auto& writer = cached_program.shared_variables.writer;
 
     // const auto& input_tensor = tensor_args.input_tensor;
     const auto& RowIdx_tensor = tensor_args.RowIdx_tensor;
@@ -340,16 +349,17 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
         runtime_args[0] = colIdx_dram_buffer->address();
         runtime_args[1] = rowIdx_dram_buffer->address();
         runtime_args[2] = codeBook_dram_buffer->address();
+        runtime_args[3] = dst_dram_buffer->address();
         runtime_args[3] = n_tiles_colIdx;
         runtime_args[4] = tile_size_bytes_codebook;
         // runtime_args[0] = src_buffer->address();
     }
 
-    {
-        auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, writer, CoreCoord{0, 0});
-        runtime_args[0] = dst_dram_buffer->address();
-        runtime_args[1] = n_tiles_colIdx;
-    }
+    // {
+    //     auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, CoreCoord{0, 0});
+    //     runtime_args[0] = dst_dram_buffer->address();
+    //     runtime_args[1] = n_tiles_colIdx;
+    // }
 }
 
 }  // namespace ttnn::operations::examples

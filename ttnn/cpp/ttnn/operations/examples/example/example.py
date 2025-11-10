@@ -15,12 +15,12 @@ try:
     # ----------------------------
     # Parameters
     # ----------------------------
-    n_tiles_colIdx = 16
-    n_tiles_rowIdx = 1
+    n_tiles_colIdx = 512
+    n_tiles_rowIdx = 32
     n_tiles_codebook = 1
     elements_per_tile_colIdx = 1024
     elements_per_tile_rowIdx = 1024
-    elements_per_tile_codebook = 64
+    elements_per_tile_codebook = 256
 
     # ----------------------------
     # Random Input Generation
@@ -30,16 +30,24 @@ try:
     # colIdx_np = rng.integers(0, 16, size=(n_tiles_colIdx * elements_per_tile_colIdx,), dtype=np.uint8)
     colIdx_np = rng.integers(0, 16, size=(n_tiles_colIdx, elements_per_tile_colIdx), dtype=np.uint8)
 
-    rowIdx_np = rng.integers(0, 4, size=(n_tiles_rowIdx * elements_per_tile_rowIdx,), dtype=np.uint8)
-    codeBook_np = np.arange(0, n_tiles_codebook * elements_per_tile_codebook, dtype=np.float32) % 64
+    # rowIdx_np = rng.integers(0, 4, size=(n_tiles_rowIdx * elements_per_tile_rowIdx,), dtype=np.uint8)
+    rowIdx_np = rng.integers(0, 4, size=(n_tiles_rowIdx, elements_per_tile_rowIdx), dtype=np.uint8)
 
-    print(f"colIdx_data size (bytes): {colIdx_np.size * colIdx_np.itemsize}")
-    print(f"rowIdx_data size (bytes): {rowIdx_np.size * rowIdx_np.itemsize}")
-    print(f"codeBook_data size (bytes): {codeBook_np.size * 2}  # bfloat16 size ~2 bytes")
+    codeBook_np = np.arange(0, n_tiles_codebook * elements_per_tile_codebook, dtype=np.float32) % 256
+
+    print(f"colIdx_data size (ele): {colIdx_np.size}")
+    print(f"rowIdx_data size (ele): {rowIdx_np.size}")
+    print(f"codeBook_data size (ele): {codeBook_np.size}")
 
     # print(f"colIdx first 16: {[int(v) for v in colIdx_np[:16]]}")
     # print(f"colIdx 1024: 1024+16: {[int(v) for v in colIdx_np[1024:1024+16]]}")
-    print(f"rowIdx first 16: {[int(v) for v in rowIdx_np[:16]]}")
+
+    flat = colIdx_np.ravel()
+    print(f"colIdx first 16: {flat[:16].tolist()}")
+    print(f"colIdx 1024–1040: {flat[1024:1040].tolist()}")
+    flatRow = rowIdx_np.ravel()
+    print(f"rowIdx first 16: {[int(v) for v in flatRow[:16]]}")
+
     print(f"codeBook first 16: {[float(v) for v in codeBook_np[:16]]}\n")
 
     # ----------------------------
@@ -59,7 +67,7 @@ try:
     print("Tensors moved to TT-NN device.\n")
     print("rowIdx_tt:", rowIdx_tt)
     print("codeBook_tt:", codeBook_tt)
-    print("colIdx_tt:", colIdx_tt)
+    print("colIdx_tt:", colIdx_tt, "\n----------------INPUTS END-----------------\n")
     # ----------------------------
     # Run the TT-NN op
     # ----------------------------
@@ -72,8 +80,9 @@ try:
     # ----------------------------
     torch_output = ttnn.to_torch(output_tt)
     output_np = torch_output.cpu().to(torch.float32).numpy()
-    print("Output tensor:")
-    print(output_np)
+    # print("Output tensor:")
+    # print(output_np)
+
     # ----------------------------
     # Validation (C++ equivalent)
     # ----------------------------
@@ -84,18 +93,23 @@ try:
     # Flatten output tensor
     output_flat = output_np.flatten()
     colIdx_flat = colIdx_np.flatten()
+    rowIdx_flat = rowIdx_np.flatten()
 
-    print("Output colIdx_flat:", [float(v) for v in colIdx_flat[2048 : 2048 + 16]])
+    # output_flat = output_np
+    # colIdx_flat = colIdx_np
+
+    print("Output colIdx_flat 0: 0+16:", [float(v) for v in colIdx_flat[0:16]])
+    print("Output colIdx_flat 1024: 1024+16:", [float(v) for v in colIdx_flat[1024 : 1024 + 16]])
     # print(colIdx_flat)
     # num_rows, num_cols = colIdx_np.shape  # Get shape from colIdx
 
-    print("\nValidating results...\n\n")
+    print("\n---------------Validating results...---------------\n")
 
     count = 0
     pass_test = True
 
     for idx_b in range(len(output_flat)):
-        rowidx = int(rowIdx_np[idx_b // 16])
+        rowidx = int(rowIdx_flat[idx_b // 16])
         colidx = int(colIdx_flat[idx_b])
         codebook_index = int(colidx + rowidx * 16)
 
