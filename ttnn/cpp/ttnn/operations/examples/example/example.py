@@ -16,8 +16,8 @@ try:
     # ----------------------------
     # Parameters
     # ----------------------------
-    n_tiles_colIdx = 512
-    n_tiles_rowIdx = 32
+    n_tiles_colIdx = 16
+    n_tiles_rowIdx = 1
     n_tiles_scales = n_tiles_rowIdx
     n_tiles_codebook = 1
     elements_per_tile_colIdx = 1024
@@ -51,9 +51,9 @@ try:
 
     flat = colIdx_np.ravel()
     print(f"colIdx first 16: {flat[:16].tolist()}")
-    print(f"colIdx 1024–1040: {flat[1024:1040].tolist()}")
+    print(f"colIdx 1024 to 1040: {flat[1024:1040].tolist()}")
     flatRow = rowIdx_np.ravel()
-    print(f"rowIdx first 16: {[int(v) for v in flatRow[:16]]}")
+    print(f"rowIdx first 64: {[int(v) for v in flatRow[:64]]}")
     flatScales = scales_np.ravel()
     print(f"scales first 16: {[float(v) for v in flatScales[:16]]}")
 
@@ -71,15 +71,28 @@ try:
     # Move to TT-NN device
     # ----------------------------
     rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
+
     scales_tt = ttnn.from_torch(scales_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
     colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
     codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
 
-    print("Tensors moved to TT-NN device.\n")
-    print("rowIdx_tt:", rowIdx_tt)
-    print("codeBook_tt:", codeBook_tt)
-    print("scales_tt:", scales_tt)
-    print("colIdx_tt:", colIdx_tt, "\n----------------INPUTS END-----------------\n")
+    # print("Tensors moved to TT-NN device.\n")
+    # print("rowIdx_tt:", rowIdx_tt)
+    # print("codeBook_tt:", codeBook_tt)
+    # print("scales_tt:", scales_tt)
+    # print("colIdx_tt:", colIdx_tt)
+    print("\n----------------INPUTS END-----------------\n")
+
+    # start_op = time.perf_counter()
+    # rowIdx_expanded_tt = ttnn.repeat(rowIdx_tt, [1, 2])
+    # end_op = time.perf_counter()
+    # print(f"Operation execution took {end_op - start_op:.6f} s " f"({(end_op - start_op)*1000:.3f} ms)\n")
+
+    # print("rowIdx_expanded_tt", rowIdx_expanded_tt)
+    # rowIdx_expanded_np = ttnn.to_torch(rowIdx_expanded_tt)
+    # rowIdx_expanded_flat = rowIdx_expanded_np.flatten()
+    # print(f"rowIdx first 64: {[int(v) for v in rowIdx_expanded_flat[:64]]}")
+
     # ----------------------------
     # Run the TT-NN op
     # ----------------------------
@@ -145,7 +158,9 @@ try:
             pass_test = False
             if count < 5:
                 print(f"Mismatch at idx_b {idx_b}: expected {expected:.2f}, got {result:.2f}")
-                print(f"  rowidx={rowidx}, colidx={colidx}, codebook_index={codebook_index}")
+                print(
+                    f"  rowidx={rowidx}, colidx={colidx}, codebook_index={codebook_index}, scales_val={scales_val:.2f}"
+                )
                 count += 1
 
     # Summary

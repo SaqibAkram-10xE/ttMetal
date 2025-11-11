@@ -51,8 +51,6 @@ int main(int argc, char** argv) {
         auto device_range = distributed::MeshCoordinateRange(mesh_device->shape());
         Program program = CreateProgram();
 
-        constexpr CoreCoord core = {0, 0};
-
         //------------------INPUT-------------------//
         // uint32_t inputColIdx_elements = 65535;
         // uint32_t inputCodeBook_elements = 64; //256
@@ -60,9 +58,9 @@ int main(int argc, char** argv) {
 
         //------------------------------------------//
 
-        uint32_t n_tiles_colIdx = 16;   // 4096;//512  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
+        uint32_t n_tiles_colIdx = 640;  // 4096;//512  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
         uint32_t n_tiles_codebook = 1;  // inputCodeBook_elements / tt::constants::TILE_HW;
-        uint32_t n_tiles_rowIdx = 1;    // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_rowIdx = n_tiles_colIdx / 16;  // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
         uint32_t n_tiles_scales = n_tiles_rowIdx;  // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
         constexpr uint32_t elements_per_tile_codebook = 256;  // 64
 
@@ -76,18 +74,32 @@ int main(int argc, char** argv) {
         constexpr uint32_t tile_size_bytes_scales = sizeof(bfloat16) * elements_per_tile_scales;
         constexpr uint32_t tile_size_bytes_output = sizeof(bfloat16) * elements_per_tile_colIdx;
 
-        auto core_grid = mesh_device->compute_with_storage_grid_size();
+        auto compute_with_storage_grid_size = mesh_device->compute_with_storage_grid_size();
+        uint32_t num_cores_y = compute_with_storage_grid_size.y;
+        // uint32_t num_cores_x = compute_with_storage_grid_size.x;
+
+        // fmt::print("num_cores_x: {}\n", num_cores_x);
+        // fmt::print("num_cores_y: {}\n", num_cores_y);
+        fmt::print("Total num of tiles colIdx: {}\n", n_tiles_colIdx);
+
+        // compute_with_storage_grid_size.y = 1;
+        // compute_with_storage_grid_size.x = 0;
+
+        // constexpr CoreCoord all_cores = {0, 0};
+
+        // auto [num_cores, mycores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
+        //     split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
+
         auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
-            split_work_to_cores(core_grid, n_tiles_colIdx);
+            split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
 
         fmt::print("num_cores: {}\n", num_cores);
-        fmt::print("work_per_core1: {}\n", work_per_core1);
-        fmt::print("work_per_core2: {}\n", work_per_core2);
+        fmt::print("work_per_core1 : {} tile/s\n", work_per_core1);
+        fmt::print("work_per_core2: {} tile/s\n", work_per_core2);
 
-        fmt::print("all_cores (size={}):\n", all_cores.size());
         fmt::print("all_cores: {}\n", all_cores);
         fmt::print("core_group_1: {}\n", core_group_1);
-        fmt::print("core_group_2: {}\n", core_group_2);
+        fmt::print("core_group_2: {}\n\n", core_group_2);
 
         distributed::DeviceLocalBufferConfig dram_config_colIdx{
             .page_size = tile_size_bytes_colIdx,
@@ -126,6 +138,7 @@ int main(int argc, char** argv) {
         auto scales_dram_buffer =
             distributed::MeshBuffer::create(buffer_config_scales, dram_config_scales, mesh_device.get());
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config_output, dram_config_output, mesh_device.get());
+
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
 
         // Initialize vectors with fixed (non-random) values
@@ -141,7 +154,11 @@ int main(int argc, char** argv) {
         // std::vector<uint8_t> rowIdx_data(elements_per_tile_rowIdx * n_tiles_rowIdx);
         // for (size_t i = 0; i < rowIdx_data.size(); ++i)
         //     rowIdx_data[i] = static_cast<uint8_t>(1); //i % 4   // values 0–3 repeating
-//-----------------------------------------------------------------------------------//
+
+        // std::vector<bfloat16> scales_data(elements_per_tile_scales * n_tiles_scales);
+        // for (size_t i = 0; i < scales_data.size(); ++i)
+        //     scales_data[i] = static_cast<float>(1);
+        //-----------------------------------------------------------------------------------//
         std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution<int> dist_col(0, 15);
 
@@ -164,15 +181,15 @@ int main(int argc, char** argv) {
             val = bfloat16(dist_scales(rng));
         }
 
-        fmt::print("colIdx_data size (bytes): {}\n", colIdx_data.size() * sizeof(uint8_t));
-        fmt::print("rowIdx_data size (bytes): {}\n", rowIdx_data.size() * sizeof(uint8_t));
-        fmt::print("codeBook_data size (bytes): {}\n", codeBook_data.size() * sizeof(bfloat16));
-        fmt::print("scales_data size (bytes): {}\n", scales_data.size() * sizeof(bfloat16));
+        // fmt::print("colIdx_data size (bytes): {}\n", colIdx_data.size() * sizeof(uint8_t));
+        // fmt::print("rowIdx_data size (bytes): {}\n", rowIdx_data.size() * sizeof(uint8_t));
+        // fmt::print("codeBook_data size (bytes): {}\n", codeBook_data.size() * sizeof(bfloat16));
+        // fmt::print("scales_data size (bytes): {}\n", scales_data.size() * sizeof(bfloat16));
 
-        fmt::print("colIdx_data elements: {}\n", colIdx_data.size());
-        fmt::print("rowIdx_data elements: {}\n", rowIdx_data.size());
-        fmt::print("codeBook_data elements: {}\n", codeBook_data.size());
-        fmt::print("scales_data elements: {}\n", scales_data.size());
+        // fmt::print("colIdx_data elements: {}\n", colIdx_data.size());
+        // fmt::print("rowIdx_data elements: {}\n", rowIdx_data.size());
+        // fmt::print("codeBook_data elements: {}\n", codeBook_data.size());
+        // fmt::print("scales_data elements: {}\n", scales_data.size());
 
         fmt::print("codeBook first 16: ");
         for (int i = 0; i < 16 && i < (int)codeBook_data.size(); ++i)
@@ -188,6 +205,18 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 0+16 && i < (int)rowIdx_data.size(); ++i)
             fmt::print("{}:{} ",i , rowIdx_data[i]);
         fmt::print("\n");
+        // fmt::print("rowIdx 64-74: ");
+        // for (int i = 64; i < 75 && i < (int)rowIdx_data.size(); ++i)
+        //     fmt::print("{}:{} ",i , rowIdx_data[i]);
+        // fmt::print("\n");
+        // fmt::print("rowIdx 128 - 138 : ");
+        // for (int i = 128; i < 144 && i < (int)rowIdx_data.size(); ++i)
+        //     fmt::print("{}:{} ",i , rowIdx_data[i]);
+        // fmt::print("\n");
+        // fmt::print("rowIdx 196 - 211: ");
+        // for (int i = 196; i < 212 && i < (int)rowIdx_data.size(); ++i)
+        //     fmt::print("{}:{} ",i , rowIdx_data[i]);
+        // fmt::print("\n");
 
         fmt::print("scales first 16: ");
         for (int i = 0; i < 16 && i < (int)scales_data.size(); ++i) {
@@ -205,7 +234,7 @@ int main(int argc, char** argv) {
         tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
         CreateCircularBuffer(
             program,
-            core,
+            all_cores,
             CircularBufferConfig(
                 /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,
                 /*data_format_spec=*/{{colIdx_cb_index, tt::DataFormat::UInt8}})
@@ -214,7 +243,7 @@ int main(int argc, char** argv) {
         tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
         CreateCircularBuffer(
             program,
-            core,
+            all_cores,
             CircularBufferConfig(
                 /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
                 /*data_format_spec=*/{{rowIdx_cb_index, tt::DataFormat::UInt8}})
@@ -223,7 +252,7 @@ int main(int argc, char** argv) {
         tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
         CreateCircularBuffer(
             program,
-            core,
+            all_cores,
             CircularBufferConfig(
                 /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
                 /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16}})
@@ -232,7 +261,7 @@ int main(int argc, char** argv) {
         tt::CBIndex scales_cb_index = tt::CBIndex::c_3;
         CreateCircularBuffer(
             program,
-            core,
+            all_cores,
             CircularBufferConfig(
                 /*total_size=*/tiles_per_cb * tile_size_bytes_scales,
                 /*data_format_spec=*/{{scales_cb_index, tt::DataFormat::Float16}})
@@ -242,7 +271,7 @@ int main(int argc, char** argv) {
         tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
         CreateCircularBuffer(
             program,
-            core,
+            all_cores,
             CircularBufferConfig(
                 /*total_size=*/tiles_per_cb * tile_size_bytes_output,
                 /*data_format_spec=*/{{dst_cb_index, tt::DataFormat::Float16}})
@@ -258,63 +287,55 @@ int main(int argc, char** argv) {
         auto reader = CreateKernel(
             program,
             OVERRIDE_KERNEL_PREFIX "eltwise_binary/kernels/dataflow/read_tiles.cpp",
-            core,
+            all_cores,
             DataMovementConfig{
                 .processor = DataMovementProcessor::RISCV_1,
                 .noc = NOC::RISCV_1_default,
                 .compile_args = reader_compile_time_args});
-        SetRuntimeArgs(
-            program,
-            reader,
-            core,
-            {colIdx_dram_buffer->address(),
-             rowIdx_dram_buffer->address(),
-             codeBook_dram_buffer->address(),
-             scales_dram_buffer->address(),
-             dst_dram_buffer->address(),
-             n_tiles_colIdx,
-             tile_size_bytes_codebook,
-             0});  // start_tile_id = 0
 
-        // SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
+        // constexpr CoreCoord core = {0, 0};
         // SetRuntimeArgs(
         //     program,
-        //     compute,
-        //     core,
-        //     {n_tiles_colIdx, elements_per_tile_colIdx, n_tiles_rowIdx, elements_per_tile_rowIdx});
+        //     reader,
+        //     all_cores,
+        //     {colIdx_dram_buffer->address(),
+        //      rowIdx_dram_buffer->address(),
+        //      codeBook_dram_buffer->address(),
+        //      scales_dram_buffer->address(),
+        //      dst_dram_buffer->address(),
+        //      n_tiles_colIdx,
+        //      tile_size_bytes_codebook,
+        //      0});  // start_tile_id = 0
 
-        // Iterate through each work group and assign work to cores
-        // for (const auto& [ranges, work_per_core] : work_groups) {
-        //     for (const auto& range : ranges.ranges()) {
-        //         for (const auto& core : range) {
-        //             // Set arguments for the reader kernel (data input)
-        //             tt_metal::SetRuntimeArgs(
-        //                 program,
-        //                 reader_id,
-        //                 core,
-        //                 {src0_dram_buffer->address(),  // Address of matrix A in DRAM
-        //                 src1_dram_buffer->address(),  // Address of matrix B in DRAM
-        //                 Mt,                           // Number of tiles in M dimension
-        //                 Kt,                           // Number of tiles in K dimension
-        //                 Nt,                           // Number of tiles in N dimension
-        //                 work_offset,                  // Starting offset for this core's work
-        //                 work_per_core});              // Amount of work for this core
+        // uint32_t num_cores_y = compute_with_storage_grid_size.y;
+        // uint32_t num_cores_x = compute_with_storage_grid_size.x;
 
-        //             // Set arguments for the writer kernel (data output)
-        //             tt_metal::SetRuntimeArgs(
-        //                 program, writer_id, core, {dst_dram_buffer->address(), work_per_core, work_offset});
+        for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+            CoreCoord core = {i / num_cores_y, i % num_cores_y};
+            uint32_t num_tiles_per_core = 0;
+            if (core_group_1.contains(core)) {
+                num_tiles_per_core = work_per_core1;
+            } else if (core_group_2.contains(core)) {
+                num_tiles_per_core = work_per_core2;
+            } else {
+                TT_ASSERT(false, "Core not in specified core ranges");
+            }
 
-        //             // Set arguments for the compute kernel
-        //             tt_metal::SetRuntimeArgs(
-        //                 program,
-        //                 compute_kernel_id,
-        //                 core,
-        //                 {work_per_core,            // Amount of work for this core
-        //                 Kt});                     // Number of tiles in K dimension for dot product
-        //             work_offset += work_per_core;  // Update offset for next core
-        //         }
-        //     }
-        // }
+            tt::tt_metal::SetRuntimeArgs(
+                program,
+                reader,
+                core,
+                {colIdx_dram_buffer->address(),
+                 rowIdx_dram_buffer->address(),
+                 codeBook_dram_buffer->address(),
+                 scales_dram_buffer->address(),
+                 dst_dram_buffer->address(),
+                 num_tiles_per_core,
+                 tile_size_bytes_codebook,
+                 num_tiles_written});
+
+            num_tiles_written += num_tiles_per_core;
+        }
 
         std::vector<bfloat16> result_vec;
         workload.add_program(device_range, std::move(program));
@@ -333,18 +354,19 @@ int main(int argc, char** argv) {
         fmt::print("\n\nDevice execution time: {:.3f} ms\n\n", device_duration_ms.count());
 
         fmt::print("\nresult_vec : ");
-        for (int i = 0; i < 40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
+        for (int i = 0; i < 16 && i < (int)result_vec.size(); ++i) {
+            fmt::print("{:.3f} ", static_cast<float>(result_vec[i]));
+        }
         fmt::print("\n");
-        for (int i = 1024; i < 1024+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
-        fmt::print("\n");
-        for (int i = 2048; i < 2048+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
-        fmt::print("\n");
-        for (int i = 3072; i < 3072+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
-        fmt::print("\n");
+        // for (int i = 1024; i < 1024+40 && i < (int)result_vec.size(); ++i)
+        //     fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
+        // fmt::print("\n");
+        // for (int i = 2048; i < 2048+40 && i < (int)result_vec.size(); ++i)
+        //     fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
+        // fmt::print("\n");
+        // for (int i = 3072; i < 3072+40 && i < (int)result_vec.size(); ++i)
+        //     fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
+        fmt::print("\n\n-----------------------------------------------\n\n");
 
         constexpr float eps = 1e-1f;
         // fmt::print("result_vec.size() : {}\n",result_vec.size());
@@ -402,10 +424,10 @@ int main(int argc, char** argv) {
     // clang-format on
 
     if (pass) {
-        fmt::print("Test Passed\n");
+        fmt::print("\n\n----------------Test Passed----------------\n\n");
     } else {
         // TT_THROW("Test Failed");
-        fmt::print("Test Failed\n");
+        fmt::print("\n\n----------------Test Failed----------------\n\n");
     }
 
     return 0;

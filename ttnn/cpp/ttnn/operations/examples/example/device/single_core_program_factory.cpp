@@ -56,8 +56,6 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
 
     tt::tt_metal::Program program{};
 
-    constexpr CoreCoord core = {0, 0};
-
     // we are sure to use the uint8_t now so,
 
     tt::DataFormat cb_data_format_colIdx = tt::tt_metal::datatype_to_dataformat_converter(ColIdx_tensor.dtype());
@@ -164,43 +162,61 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
 */
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // uint32_t num_cores_y = compute_with_storage_grid_size.y;
+    // auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
+    //     tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
+
+    constexpr CoreCoord all_cores = {0, 0};
 
     constexpr uint32_t tiles_per_cb = 2;
     tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
-    tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
-        /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,                    // The total size of the circular buffer in bytes
-        /*data_format_spec=*/{{colIdx_cb_index, cb_data_format_colIdx}})// The circular buffer index and data format it'll hold
-        .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));                  // Since we will be sending one tile at a time, we set
-                                                                          // the page size to the tile size (and thus
-                                                                          // total_size / page_size = tiles_per is the number of
-                                                                          // entries in the circular buffer)
+    tt::tt_metal::CreateCircularBuffer(
+        program,
+        all_cores,
+        CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_colIdx,  // The total size of the circular buffer in bytes
+                                                                   /*data_format_spec=*/
+            {{colIdx_cb_index, cb_data_format_colIdx}})  // The circular buffer index and data format it'll hold
+            .set_page_size(colIdx_cb_index, tile_size_bytes_colIdx));  // Since we will be sending one tile at a time,
+                                                                       // we set the page size to the tile size (and
+                                                                       // thus total_size / page_size = tiles_per is the
+                                                                       // number of entries in the circular buffer)
     tt::CBIndex rowIdx_cb_index = tt::CBIndex::c_1;
-    tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
-        /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
-        /*data_format_spec=*/{{rowIdx_cb_index, cb_data_format_rowIdx}})
-        .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
+    tt::tt_metal::CreateCircularBuffer(
+        program,
+        all_cores,
+        CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_rowIdx,
+            /*data_format_spec=*/{{rowIdx_cb_index, cb_data_format_rowIdx}})
+            .set_page_size(rowIdx_cb_index, tile_size_bytes_rowIdx));
 
     tt::CBIndex codeBook_cb_index = tt::CBIndex::c_2;
-    tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
-        /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
-        /*data_format_spec=*/{{codeBook_cb_index, cb_data_format_codebook}})
-        .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
+    tt::tt_metal::CreateCircularBuffer(
+        program,
+        all_cores,
+        CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_codebook,
+            /*data_format_spec=*/{{codeBook_cb_index, cb_data_format_codebook}})
+            .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
     tt::CBIndex scales_cb_index = tt::CBIndex::c_3;
     tt::tt_metal::CreateCircularBuffer(
         program,
-        core,
+        all_cores,
         CircularBufferConfig(
             /*total_size=*/tiles_per_cb * tile_size_bytes_scales,
             /*data_format_spec=*/{{scales_cb_index, cb_data_format_scales}})
             .set_page_size(scales_cb_index, tile_size_bytes_scales));
 
     tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
-    tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
-        /*total_size=*/tiles_per_cb * tile_size_bytes_output,
-        /*data_format_spec=*/{{dst_cb_index, cb_data_format_output}})
-        .set_page_size(dst_cb_index, tile_size_bytes_output));
-
+    tt::tt_metal::CreateCircularBuffer(
+        program,
+        all_cores,
+        CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_output,
+            /*data_format_spec=*/{{dst_cb_index, cb_data_format_output}})
+            .set_page_size(dst_cb_index, tile_size_bytes_output));
 
     std::vector<uint32_t> reader_compile_time_args;
     tt::tt_metal::TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
@@ -212,7 +228,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     auto reader = CreateKernel(
         program,
         "tt_metal/programming_examples/eltwise_binary/kernels/dataflow/read_tiles.cpp",
-        core,
+        all_cores,
         tt::tt_metal::DataMovementConfig{
             .processor = DataMovementProcessor::RISCV_1,
             .noc = NOC::RISCV_1_default,
@@ -291,18 +307,45 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         }
     */
 
-    SetRuntimeArgs(
+    tt::tt_metal::SetRuntimeArgs(
         program,
         reader,
-        core,
+        all_cores,
         {colIdx_dram_buffer->address(),
          rowIdx_dram_buffer->address(),
          codeBook_dram_buffer->address(),
          scales_dram_buffer->address(),
          dst_dram_buffer->address(),
          n_tiles_colIdx,
-         tile_size_bytes_codebook});
+         tile_size_bytes_codebook,
+         0});
 
+    // for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
+    //     CoreCoord core = {i / num_cores_y, i % num_cores_y};
+    //     uint32_t num_tiles_per_core = 0;
+    //     if (core_group_1.contains(core)) {
+    //         num_tiles_per_core = work_per_core1;
+    //     } else if (core_group_2.contains(core)) {
+    //         num_tiles_per_core = work_per_core2;
+    //     } else {
+    //         TT_ASSERT(false, "Core not in specified core ranges");
+    //     }
+
+    //     tt::tt_metal::SetRuntimeArgs(
+    //         program,
+    //         reader,
+    //         core,
+    //         {colIdx_dram_buffer->address(),
+    //         rowIdx_dram_buffer->address(),
+    //         codeBook_dram_buffer->address(),
+    //         scales_dram_buffer->address(),
+    //         dst_dram_buffer->address(),
+    //         num_tiles_per_core,
+    //         tile_size_bytes_codebook,
+    //         num_tiles_written});
+
+    //     num_tiles_written += num_tiles_per_core;
+    // }
     // SetRuntimeArgs(program, writer, core, {dst_dram_buffer->address(), n_tiles_colIdx});
     // SetRuntimeArgs(program, compute, core, {n_tiles_colIdx, elements_per_tile_colIdx,
     //                                         n_tiles_rowIdx, elements_per_tile_rowIdx});

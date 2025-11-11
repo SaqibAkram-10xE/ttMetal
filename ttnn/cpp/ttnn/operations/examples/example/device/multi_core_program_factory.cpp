@@ -54,15 +54,15 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
 
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
-    auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
+    auto [num_cores, all_cores, core_group_1, core_group_2, work_per_core1, work_per_core2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, n_tiles_colIdx);
 
     fmt::print("\n=== Core & Work Distribution Info ===\n");
     fmt::print("Grid size (x, y): ({}, {})\n", compute_with_storage_grid_size.x, compute_with_storage_grid_size.y);
     fmt::print("num_cores_y                : {}\n", num_cores_y);
     fmt::print("num_cores                  : {}\n", num_cores);
-    fmt::print("num_tiles_per_core_group_1 : {}\n", num_tiles_per_core_group_1);
-    fmt::print("num_tiles_per_core_group_2 : {}\n", num_tiles_per_core_group_2);
+    fmt::print("work_per_core1             : {}\n", work_per_core1);
+    fmt::print("work_per_core2             : {}\n", work_per_core2);
     fmt::print("all_cores.size()           : {}\n", all_cores.size());
     fmt::print("core_group_1.size()        : {}\n", core_group_1.size());
     fmt::print("core_group_2.size()        : {}\n", core_group_2.size());
@@ -182,9 +182,9 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_tiles_per_core = 0;
         if (core_group_1.contains(core)) {
-            num_tiles_per_core = num_tiles_per_core_group_1;
+            num_tiles_per_core = work_per_core1;
         } else if (core_group_2.contains(core)) {
-            num_tiles_per_core = num_tiles_per_core_group_2;
+            num_tiles_per_core = work_per_core2;
         } else {
             TT_ASSERT(false, "Core not in specified core ranges");
         }
@@ -202,8 +202,6 @@ ExampleDeviceOperation::MultiCore::cached_program_t ExampleDeviceOperation::Mult
              tile_size_bytes_codebook,
              num_tiles_written});
 
-        // tt::tt_metal::SetRuntimeArgs(
-        //     program, writer, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
         num_tiles_written += num_tiles_per_core;
     }
 

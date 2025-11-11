@@ -42,18 +42,20 @@ void kernel_main() {
     const uint32_t tile_size_bytes_scales = get_tile_size(cb_scales);  // 1024*1 = 1024 //typically 2048
     // const uint32_t tile_size_bytes_codebook = get_tile_size(cb_codeBook);  // 1024*1 = 1024 //typically 2048
     const uint32_t out_tile_size_bytes = get_tile_size(cb_out);  // 1024*2 = 2048
-    DPRINT << "READER: tile_size_bytes_scales: " << tile_size_bytes_scales << ENDL();
+    // DPRINT << "READER: tile_size_bytes_scales: " << tile_size_bytes_scales << ENDL();
 
     const uint16_t* ptr16_codebook;
     uint16_t* ptr16_output;
     const uint8_t* ptr8_row;
     const uint8_t* ptr8_col;
     const uint16_t* ptr16_scales;
-    uint32_t current_row_tile_id = start_tile_id;
+    uint32_t current_row_tile_id = (int)(start_tile_id >> 4);  // start_tile_id / 16
     int codebook_index = 0;
     int rowidx = 0;
     int colidx = 0;
     float output_value = 0.0f;
+
+    // DPRINT << "READER: current_row_tile_id: " << current_row_tile_id << ENDL();
 
     constexpr auto colIdx_args = TensorAccessorArgs<0>();
     const auto colIdx = TensorAccessor(colIdx_args, colIdx_addr, tile_size_bytes);
@@ -106,33 +108,31 @@ void kernel_main() {
         noc_async_read_barrier();
 
         // Take output ptr for out tile
-
         // uint64_t cb_out_addr = get_noc_addr(colIdx_tile_id, cb_out);
-
         uint32_t cb_out_addr = get_write_ptr(cb_out);
         ptr16_output = reinterpret_cast<uint16_t*>(cb_out_addr);
         // DPRINT << "." ;
+        uint32_t row_offset = (colIdx_tile_id % 16) << 6;
+        const uint8_t* row_ptr_tile = ptr8_row + row_offset;
+        const uint16_t* scale_ptr_tile = ptr16_scales + row_offset;
         for (uint16_t idx_b = 0; idx_b < 1024; idx_b++) {
-            rowidx = (ptr8_row[idx_b >> 4]);
+            rowidx = (row_ptr_tile[idx_b >> 4]);
             colidx = (ptr8_col[idx_b]);
             codebook_index = (colidx + (rowidx << 4));
 
             ptr16_output[idx_b] = (ptr16_codebook[codebook_index]);
-            output_value = bfloat16_to_float(ptr16_output[idx_b]) * bfloat16_to_float(ptr16_scales[idx_b >> 4]);
+            output_value = bfloat16_to_float(ptr16_output[idx_b]) * bfloat16_to_float(scale_ptr_tile[idx_b >> 4]);
             ptr16_output[idx_b] = float_to_bfloat16(output_value);
-            if ((idx_b == 0) && (colIdx_tile_id == start_tile_id)) {
+            if ((idx_b == 0) && (colIdx_tile_id == start_tile_id) && (start_tile_id == 0)) {
                 DPRINT << "READER/COMPUTE: out_cb_addr=" << (int)ptr16_output << " tile_index=" << colIdx_tile_id
                        << ENDL();
                 DPRINT << "out[0]: " << output_value << ENDL();
-                // DPRINT << "colidx: " << (int)colidx << ENDL();
-                // DPRINT << "rowidx: " << (int)rowidx << ENDL();
-                DPRINT << "codebook_index: " << (int)codebook_index << ENDL();
+                DPRINT << "output : " << bfloat16_to_float(ptr16_codebook[codebook_index]) << ENDL();
+                DPRINT << "colidx: " << (int)colidx << ENDL();
+                DPRINT << "rowidx: " << (int)rowidx << ENDL();
                 DPRINT << "Scale value " << bfloat16_to_float(ptr16_scales[idx_b >> 4]) << ENDL();
             }
         }
-        ptr8_row = &ptr8_row[64];
-        ptr16_scales = &ptr16_scales[64];
-
         // noc_async_write(ptr16_output, cb_out_addr, sizeof(uint32_t));
         // noc_async_write_barrier();
 
