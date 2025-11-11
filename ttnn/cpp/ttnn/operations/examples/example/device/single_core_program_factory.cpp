@@ -21,6 +21,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     const auto& RowIdx_tensor = tensor_args.RowIdx_tensor;
     const auto& CodeBook_tensor = tensor_args.CodeBook_tensor;
     const auto& ColIdx_tensor = tensor_args.ColIdx_tensor;
+    const auto& Scales_tensor = tensor_args.Scales_tensor;
     auto& output_tensor = tensor_return_value;
 
     // auto src_buffer = input_tensor.buffer();
@@ -29,6 +30,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     auto colIdx_dram_buffer = ColIdx_tensor.buffer();
     auto codeBook_dram_buffer = CodeBook_tensor.buffer();
     auto rowIdx_dram_buffer = RowIdx_tensor.buffer();
+    auto scales_dram_buffer = Scales_tensor.buffer();
     auto dst_dram_buffer = output_tensor.buffer();
 
     // fmt::print("ColIdx_tensor: ");
@@ -67,6 +69,9 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
 
     tt::DataFormat cb_data_format_rowIdx = tt::tt_metal::datatype_to_dataformat_converter(RowIdx_tensor.dtype());
     uint32_t tile_size_bytes_rowIdx = tt::tile_size(cb_data_format_rowIdx);
+
+    tt::DataFormat cb_data_format_scales = tt::tt_metal::datatype_to_dataformat_converter(Scales_tensor.dtype());
+    uint32_t tile_size_bytes_scales = tt::tile_size(cb_data_format_scales);
 
     tt::DataFormat cb_data_format_output = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.dtype());
     uint32_t tile_size_bytes_output = tt::tile_size(cb_data_format_output);
@@ -114,6 +119,8 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_codebook{
         .page_size = tile_size_bytes_codebook,
         .buffer_type = BufferType::DRAM};
+    tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_scales{
+        .page_size = tile_size_bytes_scales, .buffer_type = BufferType::DRAM};
     tt::tt_metal::distributed::DeviceLocalBufferConfig dram_config_output{
         .page_size = tile_size_bytes_output,
         .buffer_type = BufferType::DRAM};
@@ -179,6 +186,15 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         /*data_format_spec=*/{{codeBook_cb_index, cb_data_format_codebook}})
         .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
+    tt::CBIndex scales_cb_index = tt::CBIndex::c_3;
+    tt::tt_metal::CreateCircularBuffer(
+        program,
+        core,
+        CircularBufferConfig(
+            /*total_size=*/tiles_per_cb * tile_size_bytes_scales,
+            /*data_format_spec=*/{{scales_cb_index, cb_data_format_scales}})
+            .set_page_size(scales_cb_index, tile_size_bytes_scales));
+
     tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
     tt::tt_metal::CreateCircularBuffer(program, core, CircularBufferConfig(
         /*total_size=*/tiles_per_cb * tile_size_bytes_output,
@@ -190,6 +206,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tt::tt_metal::TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+    tt::tt_metal::TensorAccessorArgs(*scales_dram_buffer).append_to(reader_compile_time_args);
     tt::tt_metal::TensorAccessorArgs(*dst_dram_buffer).append_to(reader_compile_time_args);
 
     auto reader = CreateKernel(
@@ -281,6 +298,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         {colIdx_dram_buffer->address(),
          rowIdx_dram_buffer->address(),
          codeBook_dram_buffer->address(),
+         scales_dram_buffer->address(),
          dst_dram_buffer->address(),
          n_tiles_colIdx,
          tile_size_bytes_codebook});
@@ -333,6 +351,7 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
     const auto& RowIdx_tensor = tensor_args.RowIdx_tensor;
     const auto& CodeBook_tensor = tensor_args.CodeBook_tensor;
     const auto& ColIdx_tensor = tensor_args.ColIdx_tensor;
+    const auto& Scales_tensor = tensor_args.Scales_tensor;
 
     // auto& output_tensor = tensor_return_value;
     auto& output_tensor = tensor_return_value;
@@ -342,6 +361,7 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
     auto colIdx_dram_buffer = ColIdx_tensor.buffer();
     auto codeBook_dram_buffer = CodeBook_tensor.buffer();
     auto rowIdx_dram_buffer = RowIdx_tensor.buffer();
+    auto scales_dram_buffer = Scales_tensor.buffer();
     auto dst_dram_buffer = output_tensor.buffer();
 
     {
@@ -349,9 +369,10 @@ void ExampleDeviceOperation::SingleCore::override_runtime_arguments(
         runtime_args[0] = colIdx_dram_buffer->address();
         runtime_args[1] = rowIdx_dram_buffer->address();
         runtime_args[2] = codeBook_dram_buffer->address();
-        runtime_args[3] = dst_dram_buffer->address();
-        runtime_args[3] = n_tiles_colIdx;
-        runtime_args[4] = tile_size_bytes_codebook;
+        runtime_args[3] = scales_dram_buffer->address();
+        runtime_args[4] = dst_dram_buffer->address();
+        runtime_args[5] = n_tiles_colIdx;
+        runtime_args[6] = tile_size_bytes_codebook;
         // runtime_args[0] = src_buffer->address();
     }
 

@@ -8,9 +8,11 @@ namespace ttnn::operations::examples {
 
 ExampleDeviceOperation::program_factory_t ExampleDeviceOperation::select_program_factory(
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
-    bool some_condition_based_on_operation_attributes_and_or_tensor_args = true;
     // bool some_condition_based_on_operation_attributes_and_or_tensor_args = false;
-    if (some_condition_based_on_operation_attributes_and_or_tensor_args) {
+
+    // bool IS_SINGLE_CORE = true;
+    bool IS_SINGLE_CORE = false;
+    if (IS_SINGLE_CORE) {
         return SingleCore{};
     }
     return MultiCore{};
@@ -41,10 +43,13 @@ ExampleDeviceOperation::tensor_return_value_t ExampleDeviceOperation::create_out
 }
 
 std::tuple<ExampleDeviceOperation::operation_attributes_t, ExampleDeviceOperation::tensor_args_t>
-ExampleDeviceOperation::invoke(const Tensor& RowIdx_tensor,
-                               const Tensor& CodeBook_tensor,
-                               const Tensor& ColIdx_tensor) {
-    return {operation_attributes_t{true, 42}, tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor}};
+ExampleDeviceOperation::invoke(
+    const Tensor& RowIdx_tensor,
+    const Tensor& CodeBook_tensor,
+    const Tensor& ColIdx_tensor,
+    const Tensor& Scales_tensor) {
+    return {
+        operation_attributes_t{true, 42}, tensor_args_t{RowIdx_tensor, CodeBook_tensor, ColIdx_tensor, Scales_tensor}};
 }
 
 }  // namespace ttnn::operations::examples

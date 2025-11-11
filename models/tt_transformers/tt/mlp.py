@@ -85,6 +85,37 @@ class MLP(LightweightModule):
             args.mlp_activation_type if hasattr(args, "mlp_activation_type") else ttnn.UnaryOpType.SILU
         )
 
+        # n_tiles_colIdx = 512
+        # n_tiles_rowIdx = 32
+        # n_tiles_scales = n_tiles_rowIdx
+        # n_tiles_codebook = 1
+        # elements_per_tile_colIdx = 1024
+        # elements_per_tile_rowIdx = 1024
+        # elements_per_tile_scales = 1024
+        # elements_per_tile_codebook = 256
+
+        # rng = np.random.default_rng()
+        # colIdx_np = rng.integers(0, 16, size=(n_tiles_colIdx, elements_per_tile_colIdx), dtype=np.uint8)
+        # rowIdx_np = rng.integers(0, 4, size=(n_tiles_rowIdx, elements_per_tile_rowIdx), dtype=np.uint8)
+        # codeBook_np = np.arange(0, n_tiles_codebook * elements_per_tile_codebook, dtype=np.float32) % 256
+        # scales_np = np.random.uniform( low=0.00048828125, high=0.0625,size=(n_tiles_scales, elements_per_tile_scales)).astype(np.float32)
+
+        # # ----------------------------
+        # # Convert to Torch tensors
+        # # ----------------------------
+        # colIdx_torch = torch.tensor(colIdx_np, dtype=torch.uint8)
+        # rowIdx_torch = torch.tensor(rowIdx_np, dtype=torch.uint8)
+        # scales_torch = torch.tensor(scales_np, dtype=torch.bfloat16)
+        # codeBook_torch = torch.tensor(codeBook_np, dtype=torch.bfloat16)
+
+        # # ----------------------------
+        # # Move to TT-NN device
+        # # ----------------------------
+        # self.rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
+        # self.scales_tt = ttnn.from_torch(scales_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
+        # self.colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
+        # self.codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
+
     def forward(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
         """
         w1 -> gate_proj
@@ -121,17 +152,20 @@ class MLP(LightweightModule):
 
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
+        # Qxw1 = ttnn.prim.example()
+        print(self.w1)
         memory_config = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
         w1_out = ttnn.linear(
             x,
             self.w1,
+            # Qxw1,
             dtype=ttnn.bfloat8_b if TG else activation_dtype or ttnn.bfloat16,
             core_grid=None,  # FIXME: validate on TG ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
             compute_kernel_config=li_ff1_3_compute_kernel_cfg,
             program_config=pc_1,
             memory_config=memory_config,
         )
-
+        # Qxw1 = ttnn.prim.example()
         w3_out = ttnn.linear(
             x,
             self.w3,
@@ -242,6 +276,7 @@ class MLP(LightweightModule):
         li_ff2_compute_kernel_cfg = self.model_config["DECODERS_OPTIMIZATIONS"].get_math_fidelity(
             decoder_id=layer_num, op=OpGroup.LI_FF2, configuration=self.args
         )
+        # Qxw1 = ttnn.prim.example()
         w2_out = ttnn.linear(
             w2_in,
             self.w2,

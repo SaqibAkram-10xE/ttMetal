@@ -1911,7 +1911,8 @@ class ModelArgs:
                     self.CKPT_DIR,
                     torch_dtype="auto",
                     trust_remote_code=self.trust_remote_code_hf,
-                    local_files_only=os.getenv("CI") == "true"
+                    local_files_only=os.getenv("CI") == "true",
+                    ignore_mismatched_sizes=True,
                     # Note that the default setting is torch.dtype.float32, but model weights are
                     # may come in any dtype. If the model's weights are in torch.dtype.bfloat16, this would result in 2x memory usage from an
                     # unnecessary cast.

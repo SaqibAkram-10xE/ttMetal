@@ -20,7 +20,7 @@
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/tilize_utils.hpp>
 #include <tt-metalium/work_split.hpp>
-
+#include <chrono>
 
 using namespace tt::constants;
 using namespace std;
@@ -60,17 +60,20 @@ int main(int argc, char** argv) {
 
         //------------------------------------------//
 
-        uint32_t n_tiles_colIdx = 512;  // 4096;//512  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
+        uint32_t n_tiles_colIdx = 16;   // 4096;//512  // inputColIdx_elements / tt::constants::TILE_HW;   // 16 or 64
         uint32_t n_tiles_codebook = 1;  // inputCodeBook_elements / tt::constants::TILE_HW;
-        uint32_t n_tiles_rowIdx = 32;   // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_rowIdx = 1;    // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
+        uint32_t n_tiles_scales = n_tiles_rowIdx;  // 256;//32   // inputRowIdx_elements / tt::constants::TILE_HW;
         constexpr uint32_t elements_per_tile_codebook = 256;  // 64
 
         constexpr uint32_t elements_per_tile_colIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
         constexpr uint32_t elements_per_tile_rowIdx = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
+        constexpr uint32_t elements_per_tile_scales = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;
 
         constexpr uint32_t tile_size_bytes_colIdx = sizeof(uint8_t) * elements_per_tile_colIdx;
         constexpr uint32_t tile_size_bytes_codebook = sizeof(bfloat16) * elements_per_tile_codebook;
         constexpr uint32_t tile_size_bytes_rowIdx = sizeof(uint8_t) * elements_per_tile_rowIdx;
+        constexpr uint32_t tile_size_bytes_scales = sizeof(bfloat16) * elements_per_tile_scales;
         constexpr uint32_t tile_size_bytes_output = sizeof(bfloat16) * elements_per_tile_colIdx;
 
         auto core_grid = mesh_device->compute_with_storage_grid_size();
@@ -94,6 +97,8 @@ int main(int argc, char** argv) {
         distributed::DeviceLocalBufferConfig dram_config_codebook{
             .page_size = tile_size_bytes_codebook,
             .buffer_type = BufferType::DRAM};
+        distributed::DeviceLocalBufferConfig dram_config_scales{
+            .page_size = tile_size_bytes_scales, .buffer_type = BufferType::DRAM};
         distributed::DeviceLocalBufferConfig dram_config_output{
             .page_size = tile_size_bytes_output,
             .buffer_type = BufferType::DRAM};
@@ -108,6 +113,9 @@ int main(int argc, char** argv) {
         distributed::ReplicatedBufferConfig buffer_config_codebook{
             .size = n_tiles_codebook * tile_size_bytes_codebook // Total bytes per device (replicated across the mesh).
         };
+        distributed::ReplicatedBufferConfig buffer_config_scales{
+            .size = n_tiles_scales * tile_size_bytes_scales  // Total bytes per device (replicated across the mesh).
+        };
         distributed::ReplicatedBufferConfig buffer_config_output{
             .size = n_tiles_colIdx * tile_size_bytes_output // Total bytes per device (replicated across the mesh).
         };
@@ -115,6 +123,8 @@ int main(int argc, char** argv) {
         auto colIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config, dram_config_colIdx, mesh_device.get());
         auto codeBook_dram_buffer = distributed::MeshBuffer::create(buffer_config_codebook, dram_config_codebook, mesh_device.get());
         auto rowIdx_dram_buffer = distributed::MeshBuffer::create(buffer_config_rowIdx, dram_config_rowIdx, mesh_device.get());
+        auto scales_dram_buffer =
+            distributed::MeshBuffer::create(buffer_config_scales, dram_config_scales, mesh_device.get());
         auto dst_dram_buffer = distributed::MeshBuffer::create(buffer_config_output, dram_config_output, mesh_device.get());
         // Each handle represents a mesh-wide replicated buffer; on a unit mesh this is a single device allocation.
 
@@ -148,13 +158,21 @@ int main(int argc, char** argv) {
         for (auto& val : rowIdx_data)
             val = static_cast<uint8_t>(dist_row(rng));
 
+        std::uniform_real_distribution<float> dist_scales(0.00048828125f, 0.0625f);
+        std::vector<bfloat16> scales_data(n_tiles_scales * elements_per_tile_scales);
+        for (auto& val : scales_data) {
+            val = bfloat16(dist_scales(rng));
+        }
+
         fmt::print("colIdx_data size (bytes): {}\n", colIdx_data.size() * sizeof(uint8_t));
         fmt::print("rowIdx_data size (bytes): {}\n", rowIdx_data.size() * sizeof(uint8_t));
         fmt::print("codeBook_data size (bytes): {}\n", codeBook_data.size() * sizeof(bfloat16));
+        fmt::print("scales_data size (bytes): {}\n", scales_data.size() * sizeof(bfloat16));
 
         fmt::print("colIdx_data elements: {}\n", colIdx_data.size());
         fmt::print("rowIdx_data elements: {}\n", rowIdx_data.size());
         fmt::print("codeBook_data elements: {}\n", codeBook_data.size());
+        fmt::print("scales_data elements: {}\n", scales_data.size());
 
         fmt::print("codeBook first 16: ");
         for (int i = 0; i < 16 && i < (int)codeBook_data.size(); ++i)
@@ -171,10 +189,17 @@ int main(int argc, char** argv) {
             fmt::print("{}:{} ",i , rowIdx_data[i]);
         fmt::print("\n");
 
+        fmt::print("scales first 16: ");
+        for (int i = 0; i < 16 && i < (int)scales_data.size(); ++i) {
+            fmt::print("{:.4f} ", static_cast<float>(scales_data[i]));
+        }
+        fmt::print("\n");
+
         // Upload host vectors into the mesh buffers.
         distributed::EnqueueWriteMeshBuffer(cq, colIdx_dram_buffer, colIdx_data, false);
         distributed::EnqueueWriteMeshBuffer(cq, rowIdx_dram_buffer, rowIdx_data, false);
         distributed::EnqueueWriteMeshBuffer(cq, codeBook_dram_buffer, codeBook_data, false);
+        distributed::EnqueueWriteMeshBuffer(cq, scales_dram_buffer, scales_data, false);
 
         uint32_t tiles_per_cb = 2;
         tt::CBIndex colIdx_cb_index = tt::CBIndex::c_0;
@@ -204,6 +229,15 @@ int main(int argc, char** argv) {
                 /*data_format_spec=*/{{codeBook_cb_index, tt::DataFormat::Float16}})
                 .set_page_size(codeBook_cb_index, tile_size_bytes_codebook));
 
+        tt::CBIndex scales_cb_index = tt::CBIndex::c_3;
+        CreateCircularBuffer(
+            program,
+            core,
+            CircularBufferConfig(
+                /*total_size=*/tiles_per_cb * tile_size_bytes_scales,
+                /*data_format_spec=*/{{scales_cb_index, tt::DataFormat::Float16}})
+                .set_page_size(scales_cb_index, tile_size_bytes_scales));
+
         tiles_per_cb = n_tiles_colIdx;
         tt::CBIndex dst_cb_index = tt::CBIndex::c_16;
         CreateCircularBuffer(
@@ -218,6 +252,8 @@ int main(int argc, char** argv) {
         TensorAccessorArgs(*colIdx_dram_buffer).append_to(reader_compile_time_args);
         TensorAccessorArgs(*rowIdx_dram_buffer).append_to(reader_compile_time_args);
         TensorAccessorArgs(*codeBook_dram_buffer).append_to(reader_compile_time_args);
+        TensorAccessorArgs(*scales_dram_buffer).append_to(reader_compile_time_args);
+
         TensorAccessorArgs(*dst_dram_buffer).append_to(reader_compile_time_args);
         auto reader = CreateKernel(
             program,
@@ -234,6 +270,7 @@ int main(int argc, char** argv) {
             {colIdx_dram_buffer->address(),
              rowIdx_dram_buffer->address(),
              codeBook_dram_buffer->address(),
+             scales_dram_buffer->address(),
              dst_dram_buffer->address(),
              n_tiles_colIdx,
              tile_size_bytes_codebook,
@@ -279,33 +316,37 @@ int main(int argc, char** argv) {
         //     }
         // }
 
-
-
+        std::vector<bfloat16> result_vec;
         workload.add_program(device_range, std::move(program));
-        distributed::EnqueueMeshWorkload(cq, workload, false);
-        distributed::Finish(cq);
-        // Equivalently:
-        // distributed::EnqueueMeshWorkload(cq, workload, true);
+
+        auto start_device_time = std::chrono::high_resolution_clock::now();
+        distributed::EnqueueMeshWorkload(cq, workload, true);
+        // distributed::Finish(cq);
+        //  Equivalently:
+        //  distributed::EnqueueMeshWorkload(cq, workload, true);
 
         // Read the output buffer (from shard at mesh coordinate {0,0} on a unit mesh) and validate.
-        std::vector<bfloat16> result_vec;
         distributed::EnqueueReadMeshBuffer(cq, result_vec, dst_dram_buffer, true);
+
+        auto end_device_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> device_duration_ms = end_device_time - start_device_time;
+        fmt::print("\n\nDevice execution time: {:.3f} ms\n\n", device_duration_ms.count());
 
         fmt::print("\nresult_vec : ");
         for (int i = 0; i < 40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
+            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
         for (int i = 1024; i < 1024+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
+            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
         for (int i = 2048; i < 2048+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
+            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
         for (int i = 3072; i < 3072+40 && i < (int)result_vec.size(); ++i)
-            fmt::print("{:.0f} ", static_cast<float>(result_vec[i]));
+            fmt::print("{:.4f} ", static_cast<float>(result_vec[i]));
         fmt::print("\n");
 
-        constexpr float eps = 1e-2f;
+        constexpr float eps = 1e-1f;
         // fmt::print("result_vec.size() : {}\n",result_vec.size());
         // fmt::print("colIdx_data.size() : {}\n",colIdx_data.size());
 
@@ -320,18 +361,28 @@ int main(int argc, char** argv) {
                 fmt::print(stderr, "codebook_index out of bounds\n");
                 fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
             }else {
-                const bfloat16 expected = (codeBook_data[codebook_index]);
-                const bfloat16 result = (bfloat16)(result_vec[idx_b]);
+                float codeBookValue = static_cast<float>(codeBook_data[codebook_index]);
+                float scaleValue = static_cast<float>(scales_data[(int)(idx_b / 16)]);
+                float expected = codeBookValue * scaleValue;
+                // bfloat16 expected = bfloat16(expected_f);
+                // const bfloat16 expected = (codeBook_data[codebook_index])*(scales_data[(int)( idx_b / 16) ]);
+                float result = static_cast<float>(result_vec[idx_b]);
                 if (std::abs(expected - result) > eps) {
                     pass = false;
                     if (count < 5) {
-                        fmt::print(stderr,
-                                    "Result mismatch at index {}: expected {:.2f}, got {:.2f}\n",
-                                    idx_b,
-                                    static_cast<float>(expected),
-                                    static_cast<float>(result)
-                                );
-                        fmt::print(stderr, "codebook_index = {}, rowidx = {}, colidx = {}\n", (int)codebook_index, (int)rowidx, (int)colidx);
+                        fmt::print(
+                            stderr,
+                            "Result mismatch at index {}: expected {:.4f}, got {:.4f}\n",
+                            idx_b,
+                            static_cast<float>(expected),
+                            static_cast<float>(result));
+                        fmt::print(
+                            stderr,
+                            "codebook_index = {}, rowidx = {}, colidx = {}, SF = {:.6f}\n",
+                            (int)codebook_index,
+                            (int)rowidx,
+                            (int)colidx,
+                            scaleValue);
                         count++;
                     }
                 }
