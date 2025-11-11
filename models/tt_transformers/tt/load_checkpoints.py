@@ -48,7 +48,7 @@ def standardize_hf_keys(state_dict):
 
     if not key_meta in state_dict and key_hf in state_dict:
         state_dict[key_meta] = state_dict[key_hf]
-        del state_dict[key_hf]
+        # del state_dict[key_hf]
 
     return state_dict
 

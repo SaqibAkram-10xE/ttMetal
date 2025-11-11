@@ -74,18 +74,27 @@ class MLP(LightweightModule):
             decoder_id=layer_num, tensor=TensorGroup.FF2
         )
 
-        self.w1 = as_sharded_tensor(
-            "w1_sharded", ff1_3_dtype, dims=w1_dims
-        )  # bfp4 normally ok here but sub .99 pcc for llama 3.1 weights
-        self.w2 = as_sharded_tensor("w2_sharded", ff2_dtype, dims=w2_dims)
-        self.w3 = as_sharded_tensor("w3_sharded", ff1_3_dtype, dims=w1_dims)
+        torch_weight_CodeBook = lambda name: state_dict[f"{state_dict_prefix}.{name}.codeBook"]
+        torch_weight_ColIdx = lambda name: state_dict[f"{state_dict_prefix}.{name}.centroidIdx"].to(torch.uint8)
+        torch_weight_RowIdx = lambda name: state_dict[f"{state_dict_prefix}.{name}.codeBookIdx"].to(torch.uint8)
+        torch_weight_scales = lambda name: state_dict[f"{state_dict_prefix}.{name}.scales"]
 
-        # Default activation is SILU
-        self.activation_type = (
-            args.mlp_activation_type if hasattr(args, "mlp_activation_type") else ttnn.UnaryOpType.SILU
+        self.codeBook_tt = ttnn.from_torch(
+            torch_weight_CodeBook, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device
+        )
+        self.w1codeBoook = torch_weight_CodeBook("w1")  # torch
+
+        self.rowIdx_tt = ttnn.from_torch(
+            torch_weight_RowIdx, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device
+        )
+        self.scales_tt = ttnn.from_torch(
+            torch_weight_scales, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device
+        )
+        self.colIdx_tt = ttnn.from_torch(
+            torch_weight_ColIdx, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device
         )
 
-        # n_tiles_colIdx = 512
+        #        n_tiles_colIdx = 512
         # n_tiles_rowIdx = 32
         # n_tiles_scales = n_tiles_rowIdx
         # n_tiles_codebook = 1
@@ -103,18 +112,26 @@ class MLP(LightweightModule):
         # # ----------------------------
         # # Convert to Torch tensors
         # # ----------------------------
-        # colIdx_torch = torch.tensor(colIdx_np, dtype=torch.uint8)
-        # rowIdx_torch = torch.tensor(rowIdx_np, dtype=torch.uint8)
-        # scales_torch = torch.tensor(scales_np, dtype=torch.bfloat16)
-        # codeBook_torch = torch.tensor(codeBook_np, dtype=torch.bfloat16)
+        colIdx_torch = torch.tensor(colIdx_np, dtype=torch.uint8)
+        rowIdx_torch = torch.tensor(rowIdx_np, dtype=torch.uint8)
+        scales_torch = torch.tensor(scales_np, dtype=torch.bfloat16)
+        codeBook_torch = torch.tensor(codeBook_np, dtype=torch.bfloat16)
 
         # # ----------------------------
         # # Move to TT-NN device
         # # ----------------------------
-        # self.rowIdx_tt = ttnn.from_torch(rowIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
-        # self.scales_tt = ttnn.from_torch(scales_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
-        # self.colIdx_tt = ttnn.from_torch(colIdx_torch, dtype=ttnn.uint8, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
-        # self.codeBook_tt = ttnn.from_torch(codeBook_torch, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=mesh_device)
+
+        # FFN.w1
+        self.w1 = as_sharded_tensor(
+            "w1_sharded", ff1_3_dtype, dims=w1_dims
+        )  # bfp4 normally ok here but sub .99 pcc for llama 3.1 weights
+        self.w2 = as_sharded_tensor("w2_sharded", ff2_dtype, dims=w2_dims)
+        self.w3 = as_sharded_tensor("w3_sharded", ff1_3_dtype, dims=w1_dims)
+
+        # Default activation is SILU
+        self.activation_type = (
+            args.mlp_activation_type if hasattr(args, "mlp_activation_type") else ttnn.UnaryOpType.SILU
+        )
 
     def forward(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
         """

@@ -1907,6 +1907,7 @@ class ModelArgs:
             assert self.checkpoint_type == CheckpointType.HuggingFace
             if self.from_hf_url:
                 model_cls = self.get_hf_model_cls()
+
                 model = model_cls.from_pretrained(
                     self.CKPT_DIR,
                     torch_dtype="auto",
@@ -1917,9 +1918,15 @@ class ModelArgs:
                     # may come in any dtype. If the model's weights are in torch.dtype.bfloat16, this would result in 2x memory usage from an
                     # unnecessary cast.
                 )
+                from safetensors.torch import load_file
+
+                state_dict = load_file("/root/ttMetal/model.safetensors")
+
+                print(model.state_dict())
+
                 if self.cache_hf_flag:
                     self.cached_hf_model = model
-                state_dict = model.state_dict()
+                # state_dict = model.state_dict()
             else:
                 state_dict = load_hf_state_dict(self.CKPT_DIR)
             self.is_mixture_of_experts = any([".experts." in k for k in state_dict.keys()])
